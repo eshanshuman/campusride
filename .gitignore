@@ -25,4 +25,3 @@ reset-mysql-root.ps1
 
 # Never commit JARs (Maven downloads the MySQL driver)
 *.jar
-finish-mysql-reset.ps1
