@@ -20,5 +20,9 @@ out/
 .DS_Store
 Thumbs.db
 
+# Local laptop helper (not part of the project)
+reset-mysql-root.ps1
+
 # Never commit JARs (Maven downloads the MySQL driver)
 *.jar
+finish-mysql-reset.ps1
