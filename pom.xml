@@ -19,6 +19,8 @@
         <!-- Compile for Java 17 even if a newer JDK is installed -->
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Class started by "mvn exec:java" (can be overridden with -Dexec.mainClass=...) -->
+        <exec.mainClass>com.campusride.Main</exec.mainClass>
     </properties>
 
     <dependencies>
@@ -38,9 +40,6 @@
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.0</version>
-                <configuration>
-                    <mainClass>com.campusride.Main</mainClass>
-                </configuration>
             </plugin>
         </plugins>
     </build>
