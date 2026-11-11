@@ -1,0 +1,5 @@
+# Copy this file to db.properties (same folder) and put your own MySQL login.
+# db.properties is listed in .gitignore so your password is never committed.
+db.url=jdbc:mysql://localhost:3306/campusride_db?serverTimezone=Asia/Kolkata
+db.user=campusride
+db.password=CHANGE_ME

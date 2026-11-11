@@ -1,0 +1,24 @@
+# Maven build output
+target/
+
+# Real database settings (contain your password) - commit only db.properties.example
+src/main/resources/db.properties
+
+# Eclipse
+.classpath
+.project
+.settings/
+bin/
+
+# IntelliJ
+.idea/
+*.iml
+out/
+
+# VS Code / OS junk
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Never commit JARs (Maven downloads the MySQL driver)
+*.jar
