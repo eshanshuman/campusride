@@ -90,6 +90,7 @@ public class ApplicationPanel extends JPanel {
         // ---------------- my applications ----------------
         JPanel list = UiUtil.section("My applications (status tracking)");
         list.setLayout(new BorderLayout());
+        UiUtil.narrowColumn(appTable, 0, 45);
         list.add(UiUtil.scroll(appTable), BorderLayout.CENTER);
         JButton submitDraft = UiUtil.primaryButton("Submit selected draft");
         submitDraft.addActionListener(e -> submitSelectedDraft());
@@ -116,6 +117,7 @@ public class ApplicationPanel extends JPanel {
         toDate.addChangeListener(e -> updateSeats());
 
         loadRoutes();
+        updateSeats();
         loadMyApplications();
     }
 

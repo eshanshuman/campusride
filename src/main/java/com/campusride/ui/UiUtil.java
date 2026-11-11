@@ -137,6 +137,12 @@ public final class UiUtil {
         return t;
     }
 
+    /** Keeps a short column (like "ID" or "#") narrow so other columns get the space. */
+    public static void narrowColumn(JTable table, int column, int width) {
+        table.getColumnModel().getColumn(column).setMaxWidth(width);
+        table.getColumnModel().getColumn(column).setPreferredWidth(width);
+    }
+
     public static JScrollPane scroll(JComponent c) {
         JScrollPane sp = new JScrollPane(c);
         sp.getViewport().setBackground(Color.WHITE);

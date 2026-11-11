@@ -72,6 +72,7 @@ public class RoutesPanel extends JPanel {
 
         JPanel stopsBox = UiUtil.section("Stops and pickup times");
         stopsBox.setLayout(new BorderLayout());
+        UiUtil.narrowColumn(stopTable, 0, 40);
         stopsBox.add(UiUtil.scroll(stopTable), BorderLayout.CENTER);
         JButton apply = UiUtil.primaryButton("Apply for this stop");
         apply.addActionListener(e -> applyForSelectedStop());
