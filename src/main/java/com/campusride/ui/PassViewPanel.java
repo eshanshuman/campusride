@@ -2,6 +2,7 @@ package com.campusride.ui;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
@@ -11,7 +12,9 @@ import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.table.DefaultTableModel;
 
@@ -20,40 +23,40 @@ import com.campusride.service.ApplicationService;
 import com.campusride.service.ServiceException;
 import com.campusride.util.Session;
 
-/**
- * Screen: "My Bus Pass".
- * A pass "card" (navy with a yellow stripe) for the selected pass, and a
- * table of all the student's passes (ACTIVE / CANCELLED / EXPIRED).
- */
+// "My Bus Pass" tab.
+// Top: the pass drawn like a card (navy with a yellow stripe).
+// Bottom: a table with all the student's passes.
 public class PassViewPanel extends JPanel {
 
-    private final ApplicationService applicationService = new ApplicationService();
+    private ApplicationService applicationService = new ApplicationService();
 
-    private final DefaultTableModel passModel = UiUtil.readOnlyModel(
+    private DefaultTableModel passModel = UiUtil.readOnlyModel(
             "Pass No", "Route", "Stop", "Pickup", "From", "To", "Status");
-    private final JTable passTable = UiUtil.table(passModel);
+    private JTable passTable = UiUtil.table(passModel);
     private List<BusPass> passes = new ArrayList<>();
 
-    // labels on the pass card
-    private final JLabel cardPassNo = cardLabel(22, Font.BOLD);
-    private final JLabel cardName = cardLabel(15, Font.BOLD);
-    private final JLabel cardRoll = cardLabel(13, Font.PLAIN);
-    private final JLabel cardRoute = cardLabel(13, Font.PLAIN);
-    private final JLabel cardStop = cardLabel(13, Font.PLAIN);
-    private final JLabel cardDates = cardLabel(13, Font.PLAIN);
-    private final JLabel cardStatus = cardLabel(15, Font.BOLD);
+    // labels on the card
+    private JLabel cardPassNo = cardLabel(22, Font.BOLD);
+    private JLabel cardName = cardLabel(15, Font.BOLD);
+    private JLabel cardRoll = cardLabel(13, Font.PLAIN);
+    private JLabel cardRoute = cardLabel(13, Font.PLAIN);
+    private JLabel cardStop = cardLabel(13, Font.PLAIN);
+    private JLabel cardDates = cardLabel(13, Font.PLAIN);
+    private JLabel cardStatus = cardLabel(15, Font.BOLD);
 
     public PassViewPanel() {
         setLayout(new BorderLayout(10, 10));
         setBackground(UiUtil.BACKGROUND);
         setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
-        // ---- the pass card ----
+        // ----- the card -----
         JPanel card = new JPanel(new GridLayout(7, 1, 0, 2));
         card.setBackground(UiUtil.NAVY);
         card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 10, 0, 0, UiUtil.YELLOW),
+                BorderFactory.createMatteBorder(0, 10, 0, 0, UiUtil.YELLOW),   // yellow stripe on the left
                 BorderFactory.createEmptyBorder(14, 18, 14, 18)));
+        card.setPreferredSize(new Dimension(520, 230));
+
         JLabel brand = cardLabel(12, Font.BOLD);
         brand.setText("CAMPUSRIDE  -  COLLEGE BUS PASS");
         brand.setForeground(UiUtil.YELLOW);
@@ -63,22 +66,21 @@ public class PassViewPanel extends JPanel {
         card.add(cardRoll);
         card.add(cardRoute);
         card.add(cardStop);
-        JPanel bottomRow = new JPanel(new BorderLayout());
-        bottomRow.setOpaque(false);
-        bottomRow.add(cardDates, BorderLayout.WEST);
-        bottomRow.add(cardStatus, BorderLayout.EAST);
-        card.add(bottomRow);
+        JPanel lastRow = new JPanel(new BorderLayout());
+        lastRow.setOpaque(false);
+        lastRow.add(cardDates, BorderLayout.WEST);
+        lastRow.add(cardStatus, BorderLayout.EAST);
+        card.add(lastRow);
 
         JPanel cardHolder = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         cardHolder.setOpaque(false);
-        card.setPreferredSize(new java.awt.Dimension(520, 230));
         cardHolder.add(card);
         add(cardHolder, BorderLayout.NORTH);
 
-        // ---- table of all passes ----
+        // ----- table of all passes -----
         JPanel list = UiUtil.section("All my passes");
         list.setLayout(new BorderLayout());
-        list.add(UiUtil.scroll(passTable), BorderLayout.CENTER);
+        list.add(new JScrollPane(passTable), BorderLayout.CENTER);
         JButton refresh = UiUtil.secondaryButton("Refresh");
         refresh.addActionListener(e -> loadPasses());
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -87,23 +89,25 @@ public class PassViewPanel extends JPanel {
         list.add(buttons, BorderLayout.SOUTH);
         add(list, BorderLayout.CENTER);
 
+        // clicking a pass in the table shows it on the card
         passTable.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting() && passTable.getSelectedRow() >= 0) {
-                showCard(passes.get(passTable.getSelectedRow()));
+            int row = passTable.getSelectedRow();
+            if (!e.getValueIsAdjusting() && row >= 0) {
+                showCard(passes.get(row));
             }
         });
 
         loadPasses();
     }
 
-    private static JLabel cardLabel(int size, int style) {
-        JLabel l = new JLabel(" ");
-        l.setForeground(Color.WHITE);
-        l.setFont(new Font(Font.SANS_SERIF, style, size));
-        return l;
+    // white label for the card
+    private JLabel cardLabel(int size, int style) {
+        JLabel label = new JLabel(" ");
+        label.setForeground(Color.WHITE);
+        label.setFont(new Font(Font.SANS_SERIF, style, size));
+        return label;
     }
 
-    /** Loads passes; shows the first ACTIVE one on the card (or a message). */
     public void loadPasses() {
         try {
             passes = applicationService.getMyPasses();
@@ -112,20 +116,22 @@ public class PassViewPanel extends JPanel {
                 passModel.addRow(new Object[] {p.getPassNo(), p.getRouteName(), p.getStopName(),
                         p.getPickupTime(), p.getValidFrom(), p.getValidTo(), p.getStatus()});
             }
-            BusPass show = null;
+
+            // show the first ACTIVE pass on the card
+            BusPass activePass = null;
             for (BusPass p : passes) {
-                if ("ACTIVE".equals(p.getStatus())) {
-                    show = p;
+                if (p.getStatus().equals("ACTIVE")) {
+                    activePass = p;
                     break;
                 }
             }
-            if (show != null) {
-                showCard(show);
+            if (activePass != null) {
+                showCard(activePass);
             } else {
                 showEmptyCard();
             }
         } catch (ServiceException ex) {
-            UiUtil.error(this, ex.getMessage());
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -137,12 +143,18 @@ public class PassViewPanel extends JPanel {
         cardStop.setText("Boarding: " + p.getStopName() + " at " + p.getPickupTime());
         cardDates.setText("Valid " + p.getValidFrom() + "  to  " + p.getValidTo());
         cardStatus.setText(p.getStatus());
-        cardStatus.setForeground("ACTIVE".equals(p.getStatus()) ? UiUtil.YELLOW : new Color(0xFF, 0x9A, 0x9A));
+        if (p.getStatus().equals("ACTIVE")) {
+            cardStatus.setForeground(UiUtil.YELLOW);
+        } else {
+            cardStatus.setForeground(new Color(0xFF, 0x9A, 0x9A));   // light red for CANCELLED / EXPIRED
+        }
     }
 
     private void showEmptyCard() {
         cardPassNo.setText("No active pass");
-        cardName.setText(Session.getStudent() == null ? "" : Session.getStudent().getFullName());
+        if (Session.getStudent() != null) {
+            cardName.setText(Session.getStudent().getFullName());
+        }
         cardRoll.setText("Apply from the 'Routes & Timings' or 'Apply for Pass' tab.");
         cardRoute.setText("Once the transport office approves, your pass appears here.");
         cardStop.setText(" ");

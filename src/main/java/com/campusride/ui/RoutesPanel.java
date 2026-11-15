@@ -11,7 +11,9 @@ import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
 import javax.swing.JTable;
 import javax.swing.table.DefaultTableModel;
@@ -21,27 +23,24 @@ import com.campusride.model.Stop;
 import com.campusride.service.RouteService;
 import com.campusride.service.ServiceException;
 
-/**
- * Screen: "Routes & Timings".
- * Left: active routes with bus and capacity. Right: stops and pickup times of
- * the selected route. Top: a period, and the seats left on the route for it.
- * "Apply for this stop" opens ApplicationPanel already filled in.
- */
+// "Routes & Timings" tab.
+// Left: running routes. Right: stops of the selected route.
+// Top: pick a period to see how many seats are left on that route.
 public class RoutesPanel extends JPanel {
 
-    private final RouteService routeService = new RouteService();
-    private final StudentDashboard dashboard;
+    private RouteService routeService = new RouteService();
+    private StudentDashboard dashboard;
 
-    private final JSpinner fromDate = UiUtil.dateSpinner(LocalDate.now().plusDays(1));
-    private final JSpinner toDate = UiUtil.dateSpinner(LocalDate.now().plusMonths(6));
-    private final JLabel seatsLabel = new JLabel("Select a route to see seats left.");
+    private JSpinner fromDate = UiUtil.dateSpinner(LocalDate.now().plusDays(1));
+    private JSpinner toDate = UiUtil.dateSpinner(LocalDate.now().plusMonths(6));
+    private JLabel seatsLabel = new JLabel("Select a route to see seats left.");
 
-    private final DefaultTableModel routeModel = UiUtil.readOnlyModel("Route", "Bus", "Capacity");
-    private final JTable routeTable = UiUtil.table(routeModel);
-    private final DefaultTableModel stopModel = UiUtil.readOnlyModel("#", "Stop", "Pickup time");
-    private final JTable stopTable = UiUtil.table(stopModel);
+    private DefaultTableModel routeModel = UiUtil.readOnlyModel("Route", "Bus", "Capacity");
+    private JTable routeTable = UiUtil.table(routeModel);
+    private DefaultTableModel stopModel = UiUtil.readOnlyModel("#", "Stop", "Pickup time");
+    private JTable stopTable = UiUtil.table(stopModel);
 
-    // The objects behind each table row (same order as the rows)
+    // the objects shown in each table, in the same order as the rows
     private List<Route> routes = new ArrayList<>();
     private List<Stop> stops = new ArrayList<>();
 
@@ -51,7 +50,7 @@ public class RoutesPanel extends JPanel {
         setBackground(UiUtil.BACKGROUND);
         setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
-        // ---- top: period + seats left ----
+        // top: travel period and seats left
         JPanel top = UiUtil.section("Travel period");
         top.setLayout(new FlowLayout(FlowLayout.LEFT, 10, 2));
         top.add(new JLabel("From"));
@@ -65,15 +64,16 @@ public class RoutesPanel extends JPanel {
         top.add(seatsLabel);
         add(top, BorderLayout.NORTH);
 
-        // ---- centre: routes | stops ----
+        // left: routes
         JPanel routesBox = UiUtil.section("Bus routes");
         routesBox.setLayout(new BorderLayout());
-        routesBox.add(UiUtil.scroll(routeTable), BorderLayout.CENTER);
+        routesBox.add(new JScrollPane(routeTable), BorderLayout.CENTER);
 
+        // right: stops and the Apply button
         JPanel stopsBox = UiUtil.section("Stops and pickup times");
         stopsBox.setLayout(new BorderLayout());
-        UiUtil.narrowColumn(stopTable, 0, 40);
-        stopsBox.add(UiUtil.scroll(stopTable), BorderLayout.CENTER);
+        stopTable.getColumnModel().getColumn(0).setMaxWidth(40);   // "#" column doesn't need much space
+        stopsBox.add(new JScrollPane(stopTable), BorderLayout.CENTER);
         JButton apply = UiUtil.primaryButton("Apply for this stop");
         apply.addActionListener(e -> applyForSelectedStop());
         JPanel applyRow = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -87,7 +87,7 @@ public class RoutesPanel extends JPanel {
         centre.add(stopsBox);
         add(centre, BorderLayout.CENTER);
 
-        // When a route is clicked, load its stops and seats
+        // when the student clicks a route, show its stops and seats
         routeTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 loadStops();
@@ -98,7 +98,6 @@ public class RoutesPanel extends JPanel {
         loadRoutes();
     }
 
-    /** (Re)loads the list of active routes. */
     public void loadRoutes() {
         try {
             routes = routeService.getActiveRoutes();
@@ -109,19 +108,23 @@ public class RoutesPanel extends JPanel {
             stopModel.setRowCount(0);
             seatsLabel.setText("Select a route to see seats left.");
         } catch (ServiceException ex) {
-            UiUtil.error(this, ex.getMessage());
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    private Route selectedRoute() {
+    // returns null if no route is selected
+    private Route getSelectedRoute() {
         int row = routeTable.getSelectedRow();
-        return row < 0 ? null : routes.get(row);
+        if (row < 0) {
+            return null;
+        }
+        return routes.get(row);
     }
 
     private void loadStops() {
         stopModel.setRowCount(0);
         stops = new ArrayList<>();
-        Route r = selectedRoute();
+        Route r = getSelectedRoute();
         if (r == null) {
             return;
         }
@@ -131,33 +134,38 @@ public class RoutesPanel extends JPanel {
                 stopModel.addRow(new Object[] {s.getStopSeq(), s.getStopName(), s.getPickupTime()});
             }
         } catch (ServiceException ex) {
-            UiUtil.error(this, ex.getMessage());
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void updateSeats() {
-        Route r = selectedRoute();
+        Route r = getSelectedRoute();
         if (r == null) {
             seatsLabel.setText("Select a route to see seats left.");
             return;
         }
         try {
-            int left = routeService.getSeatsLeft(r.getRouteId(), UiUtil.getDate(fromDate), UiUtil.getDate(toDate));
-            seatsLabel.setText("Seats left on " + r.getRouteName() + ": " + left + " of " + r.getCapacity());
-            seatsLabel.setForeground(left > 0 ? UiUtil.GREEN : UiUtil.RED);
+            int seatsLeft = routeService.getSeatsLeft(r.getRouteId(), UiUtil.getDate(fromDate), UiUtil.getDate(toDate));
+            seatsLabel.setText("Seats left on " + r.getRouteName() + ": " + seatsLeft + " of " + r.getCapacity());
+            if (seatsLeft > 0) {
+                seatsLabel.setForeground(UiUtil.GREEN);
+            } else {
+                seatsLabel.setForeground(UiUtil.RED);
+            }
         } catch (ServiceException ex) {
+            // e.g. wrong dates - show it in the label instead of a popup
             seatsLabel.setText(ex.getMessage());
             seatsLabel.setForeground(UiUtil.RED);
         }
     }
 
     private void applyForSelectedStop() {
-        Route r = selectedRoute();
-        int row = stopTable.getSelectedRow();
-        if (r == null || row < 0) {
-            UiUtil.error(this, "Please select a route and then a stop.");
+        Route r = getSelectedRoute();
+        int stopRow = stopTable.getSelectedRow();
+        if (r == null || stopRow < 0) {
+            JOptionPane.showMessageDialog(this, "Please select a route and then a stop.");
             return;
         }
-        dashboard.openApplicationFor(r, stops.get(row), UiUtil.getDate(fromDate), UiUtil.getDate(toDate));
+        dashboard.openApplicationFor(r, stops.get(stopRow), UiUtil.getDate(fromDate), UiUtil.getDate(toDate));
     }
 }

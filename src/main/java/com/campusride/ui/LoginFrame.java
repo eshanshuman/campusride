@@ -9,51 +9,46 @@ import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextField;
-import javax.swing.WindowConstants;
 
 import com.campusride.model.Student;
 import com.campusride.model.User;
 import com.campusride.service.AuthService;
 import com.campusride.service.ServiceException;
 
-/**
- * Screen 1: Login and Register (two tabs).
- * After a successful login it opens StudentDashboard or AdminDashboard.
- */
+// First screen: a Login tab and a Register tab (registering is only for students).
 public class LoginFrame extends JFrame {
 
-    /** Department choices, shared with ProfilePanel. */
+    // also used by ProfilePanel
     static final String[] DEPARTMENTS = {"CSE", "IT", "ECE", "EEE", "MECH", "CIVIL", "BIOTECH", "OTHER"};
     static final Integer[] YEARS = {1, 2, 3, 4, 5};
 
-    private final AuthService authService = new AuthService();
+    private AuthService authService = new AuthService();
+    private JTabbedPane tabs = new JTabbedPane();
 
-    // ---- Login tab ----
-    private final JTextField loginUser = new JTextField(18);
-    private final JPasswordField loginPass = new JPasswordField(18);
+    // login tab fields
+    private JTextField loginUser = new JTextField(18);
+    private JPasswordField loginPass = new JPasswordField(18);
 
-    // ---- Register tab ----
-    private final JTextField regUser = new JTextField(18);
-    private final JPasswordField regPass = new JPasswordField(18);
-    private final JPasswordField regConfirm = new JPasswordField(18);
-    private final JTextField regRoll = new JTextField(18);
-    private final JTextField regName = new JTextField(18);
-    private final JComboBox<String> regDept = new JComboBox<>(DEPARTMENTS);
-    private final JComboBox<Integer> regYear = new JComboBox<>(YEARS);
-    private final JTextField regPhone = new JTextField(18);
-    private final JTextField regEmail = new JTextField(18);
-
-    private final JTabbedPane tabs = new JTabbedPane();
+    // register tab fields
+    private JTextField regUser = new JTextField(18);
+    private JPasswordField regPass = new JPasswordField(18);
+    private JPasswordField regConfirm = new JPasswordField(18);
+    private JTextField regRoll = new JTextField(18);
+    private JTextField regName = new JTextField(18);
+    private JComboBox<String> regDept = new JComboBox<>(DEPARTMENTS);
+    private JComboBox<Integer> regYear = new JComboBox<>(YEARS);
+    private JTextField regPhone = new JTextField(18);
+    private JTextField regEmail = new JTextField(18);
 
     public LoginFrame() {
         super("CampusRide - Login");
-        setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
-        getContentPane().setBackground(UiUtil.BACKGROUND);
 
         add(UiUtil.header("CampusRide", "College Bus Pass & Route Allocation System"), BorderLayout.NORTH);
 
@@ -66,7 +61,7 @@ public class LoginFrame extends JFrame {
         add(centre, BorderLayout.CENTER);
 
         setSize(480, 600);
-        setLocationRelativeTo(null);   // centre on screen
+        setLocationRelativeTo(null);   // middle of the screen
     }
 
     private JPanel buildLoginTab() {
@@ -78,45 +73,45 @@ public class LoginFrame extends JFrame {
 
         JButton loginBtn = UiUtil.primaryButton("Log in");
         loginBtn.addActionListener(e -> doLogin());
-        loginPass.addActionListener(e -> doLogin());   // Enter key in password field
+        loginPass.addActionListener(e -> doLogin());   // pressing Enter in the password box also logs in
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.setOpaque(false);
         buttons.add(loginBtn);
         UiUtil.addWide(form, 2, buttons);
 
-        JPanel wrapper = new JPanel(new BorderLayout());
-        wrapper.setBackground(Color.WHITE);
-        wrapper.add(form, BorderLayout.NORTH);
-        return wrapper;
+        // put the form at the top so it doesn't stretch over the whole tab
+        JPanel tab = new JPanel(new BorderLayout());
+        tab.setBackground(Color.WHITE);
+        tab.add(form, BorderLayout.NORTH);
+        return tab;
     }
 
     private JPanel buildRegisterTab() {
         JPanel form = new JPanel(new GridBagLayout());
         form.setBackground(Color.WHITE);
         form.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
-        int row = 0;
-        UiUtil.addRow(form, row++, "Username *", regUser);
-        UiUtil.addRow(form, row++, "Password *", regPass);
-        UiUtil.addRow(form, row++, "Confirm password *", regConfirm);
-        UiUtil.addRow(form, row++, "Roll number *", regRoll);
-        UiUtil.addRow(form, row++, "Full name *", regName);
-        UiUtil.addRow(form, row++, "Department *", regDept);
-        UiUtil.addRow(form, row++, "Year of study *", regYear);
-        UiUtil.addRow(form, row++, "Phone (10 digits) *", regPhone);
-        UiUtil.addRow(form, row++, "Email *", regEmail);
+        UiUtil.addRow(form, 0, "Username *", regUser);
+        UiUtil.addRow(form, 1, "Password *", regPass);
+        UiUtil.addRow(form, 2, "Confirm password *", regConfirm);
+        UiUtil.addRow(form, 3, "Roll number *", regRoll);
+        UiUtil.addRow(form, 4, "Full name *", regName);
+        UiUtil.addRow(form, 5, "Department *", regDept);
+        UiUtil.addRow(form, 6, "Year of study *", regYear);
+        UiUtil.addRow(form, 7, "Phone (10 digits) *", regPhone);
+        UiUtil.addRow(form, 8, "Email *", regEmail);
 
         JButton registerBtn = UiUtil.primaryButton("Create account");
         registerBtn.addActionListener(e -> doRegister());
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.setOpaque(false);
         buttons.add(registerBtn);
-        UiUtil.addWide(form, row, buttons);
+        UiUtil.addWide(form, 9, buttons);
 
-        JPanel wrapper = new JPanel(new BorderLayout());
-        wrapper.setBackground(Color.WHITE);
-        wrapper.add(form, BorderLayout.NORTH);
-        return wrapper;
+        JPanel tab = new JPanel(new BorderLayout());
+        tab.setBackground(Color.WHITE);
+        tab.add(form, BorderLayout.NORTH);
+        return tab;
     }
 
     private void doLogin() {
@@ -130,7 +125,7 @@ public class LoginFrame extends JFrame {
             }
             dispose();   // close the login window
         } catch (ServiceException ex) {
-            UiUtil.error(this, ex.getMessage());
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -144,20 +139,27 @@ public class LoginFrame extends JFrame {
         s.setEmail(regEmail.getText());
         try {
             authService.registerStudent(regUser.getText(), regPass.getPassword(), regConfirm.getPassword(), s);
-            UiUtil.info(this, "Account created! You can now log in as '" + regUser.getText().trim() + "'.");
-            loginUser.setText(regUser.getText().trim());
+            String newUsername = regUser.getText().trim();
+            JOptionPane.showMessageDialog(this, "Account created! You can now log in as '" + newUsername + "'.");
+
+            // go to the login tab with the username already filled in
+            loginUser.setText(newUsername);
             clearRegisterForm();
             tabs.setSelectedIndex(0);
             loginPass.requestFocusInWindow();
         } catch (ServiceException ex) {
-            UiUtil.error(this, ex.getMessage());
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void clearRegisterForm() {
-        for (JTextField f : new JTextField[] {regUser, regPass, regConfirm, regRoll, regName, regPhone, regEmail}) {
-            f.setText("");
-        }
+        regUser.setText("");
+        regPass.setText("");
+        regConfirm.setText("");
+        regRoll.setText("");
+        regName.setText("");
+        regPhone.setText("");
+        regEmail.setText("");
         regDept.setSelectedIndex(0);
         regYear.setSelectedIndex(0);
     }

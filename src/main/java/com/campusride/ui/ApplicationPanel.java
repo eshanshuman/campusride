@@ -12,7 +12,9 @@ import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
@@ -25,79 +27,75 @@ import com.campusride.service.ApplicationService;
 import com.campusride.service.RouteService;
 import com.campusride.service.ServiceException;
 
-/**
- * Screen: "Apply for Pass".
- * Top: form to apply (route -> stop, dates, remarks) as DRAFT or SUBMITTED.
- * Bottom: the student's applications and their status (tracking), with
- * buttons to submit or delete a DRAFT.
- */
+// "Apply for Pass" tab.
+// Top: form to apply for a stop and dates (save as DRAFT or SUBMIT).
+// Bottom: the student's applications with their status, and buttons for drafts.
 public class ApplicationPanel extends JPanel {
 
-    private final ApplicationService applicationService = new ApplicationService();
-    private final RouteService routeService = new RouteService();
-    private final StudentDashboard dashboard;
+    private ApplicationService applicationService = new ApplicationService();
+    private RouteService routeService = new RouteService();
 
-    private final JComboBox<Route> routeBox = new JComboBox<>();
-    private final JComboBox<Stop> stopBox = new JComboBox<>();
-    private final JSpinner fromDate = UiUtil.dateSpinner(LocalDate.now().plusDays(1));
-    private final JSpinner toDate = UiUtil.dateSpinner(LocalDate.now().plusMonths(6));
-    private final JTextArea remarks = new JTextArea(3, 24);
-    private final JLabel seatsLabel = new JLabel(" ");
+    private JComboBox<Route> routeBox = new JComboBox<>();
+    private JComboBox<Stop> stopBox = new JComboBox<>();
+    private JSpinner fromDate = UiUtil.dateSpinner(LocalDate.now().plusDays(1));
+    private JSpinner toDate = UiUtil.dateSpinner(LocalDate.now().plusMonths(6));
+    private JTextArea remarks = new JTextArea(3, 24);
+    private JLabel seatsLabel = new JLabel(" ");
 
-    private final DefaultTableModel appModel = UiUtil.readOnlyModel(
+    private DefaultTableModel appModel = UiUtil.readOnlyModel(
             "ID", "Route", "Stop", "From", "To", "Status", "Applied on", "Admin remarks");
-    private final JTable appTable = UiUtil.table(appModel);
+    private JTable appTable = UiUtil.table(appModel);
     private List<Application> myApps = new ArrayList<>();
 
-    /** True while we fill the combo boxes in code, so their listeners do nothing. */
+    // When we fill the route combo box from code, its listener would fire for every item.
+    // While this is true the listener does nothing.
     private boolean loading = false;
 
-    public ApplicationPanel(StudentDashboard dashboard) {
-        this.dashboard = dashboard;
+    public ApplicationPanel() {
         setLayout(new BorderLayout(10, 10));
         setBackground(UiUtil.BACKGROUND);
         setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
-        // ---------------- form ----------------
+        // ----- the form -----
         JPanel form = UiUtil.section("New bus pass application");
         form.setLayout(new GridBagLayout());
         remarks.setLineWrap(true);
         remarks.setWrapStyleWord(true);
-        int row = 0;
-        UiUtil.addRow(form, row++, "Route *", routeBox);
-        UiUtil.addRow(form, row++, "Stop *", stopBox);
-        UiUtil.addRow(form, row++, "Valid from *", fromDate);
-        UiUtil.addRow(form, row++, "Valid to *", toDate);
-        UiUtil.addRow(form, row++, "Remarks (optional)", UiUtil.scroll(remarks));
         seatsLabel.setFont(seatsLabel.getFont().deriveFont(Font.BOLD));
-        UiUtil.addRow(form, row++, "Seats left", seatsLabel);
+        UiUtil.addRow(form, 0, "Route *", routeBox);
+        UiUtil.addRow(form, 1, "Stop *", stopBox);
+        UiUtil.addRow(form, 2, "Valid from *", fromDate);
+        UiUtil.addRow(form, 3, "Valid to *", toDate);
+        UiUtil.addRow(form, 4, "Remarks (optional)", new JScrollPane(remarks));
+        UiUtil.addRow(form, 5, "Seats left", seatsLabel);
 
         JButton draftBtn = UiUtil.secondaryButton("Save as draft");
-        draftBtn.addActionListener(e -> create(false));
+        draftBtn.addActionListener(e -> createApplication(false));
         JButton submitBtn = UiUtil.primaryButton("Submit application");
-        submitBtn.addActionListener(e -> create(true));
+        submitBtn.addActionListener(e -> createApplication(true));
         JPanel formButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         formButtons.setOpaque(false);
         formButtons.add(draftBtn);
         formButtons.add(submitBtn);
-        UiUtil.addWide(form, row, formButtons);
+        UiUtil.addWide(form, 6, formButtons);
 
         JPanel formHolder = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         formHolder.setOpaque(false);
         formHolder.add(form);
         add(formHolder, BorderLayout.NORTH);
 
-        // ---------------- my applications ----------------
+        // ----- my applications -----
         JPanel list = UiUtil.section("My applications (status tracking)");
         list.setLayout(new BorderLayout());
-        UiUtil.narrowColumn(appTable, 0, 45);
-        list.add(UiUtil.scroll(appTable), BorderLayout.CENTER);
-        JButton submitDraft = UiUtil.primaryButton("Submit selected draft");
-        submitDraft.addActionListener(e -> submitSelectedDraft());
-        JButton deleteDraft = UiUtil.secondaryButton("Delete selected draft");
-        deleteDraft.addActionListener(e -> deleteSelectedDraft());
+        appTable.getColumnModel().getColumn(0).setMaxWidth(45);   // ID column
+        list.add(new JScrollPane(appTable), BorderLayout.CENTER);
+
         JButton refresh = UiUtil.secondaryButton("Refresh");
         refresh.addActionListener(e -> loadMyApplications());
+        JButton deleteDraft = UiUtil.secondaryButton("Delete selected draft");
+        deleteDraft.addActionListener(e -> deleteSelectedDraft());
+        JButton submitDraft = UiUtil.primaryButton("Submit selected draft");
+        submitDraft.addActionListener(e -> submitSelectedDraft());
         JPanel listButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         listButtons.setOpaque(false);
         listButtons.add(refresh);
@@ -106,10 +104,10 @@ public class ApplicationPanel extends JPanel {
         list.add(listButtons, BorderLayout.SOUTH);
         add(list, BorderLayout.CENTER);
 
-        // ---------------- listeners ----------------
+        // when the route changes, load its stops; when anything changes, update seats left
         routeBox.addActionListener(e -> {
             if (!loading) {
-                loadStopsFor((Route) routeBox.getSelectedItem(), null);
+                loadStops((Route) routeBox.getSelectedItem(), 0);
                 updateSeats();
             }
         });
@@ -121,18 +119,17 @@ public class ApplicationPanel extends JPanel {
         loadMyApplications();
     }
 
-    /** Called by RoutesPanel's "Apply for this stop": pre-fills the form. */
+    // Called from RoutesPanel ("Apply for this stop"): fill in the form for the student.
     public void prefill(Route route, Stop stop, LocalDate from, LocalDate to) {
         loadRoutes();
+        loading = true;
         for (int i = 0; i < routeBox.getItemCount(); i++) {
             if (routeBox.getItemAt(i).getRouteId() == route.getRouteId()) {
-                loading = true;
                 routeBox.setSelectedIndex(i);
-                loading = false;
-                break;
             }
         }
-        loadStopsFor(route, stop.getStopId());
+        loading = false;
+        loadStops(route, stop.getStopId());
         UiUtil.setDate(fromDate, from);
         UiUtil.setDate(toDate, to);
         remarks.setText("");
@@ -141,34 +138,35 @@ public class ApplicationPanel extends JPanel {
 
     private void loadRoutes() {
         loading = true;
+        routeBox.removeAllItems();
         try {
-            routeBox.removeAllItems();
-            for (Route r : routeService.getActiveRoutes()) {
+            List<Route> routes = routeService.getActiveRoutes();
+            for (Route r : routes) {
                 routeBox.addItem(r);
             }
         } catch (ServiceException ex) {
-            UiUtil.error(this, ex.getMessage());
-        } finally {
-            loading = false;
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
-        loadStopsFor((Route) routeBox.getSelectedItem(), null);
+        loading = false;
+        loadStops((Route) routeBox.getSelectedItem(), 0);
     }
 
-    /** Fills the stop box for a route; selects selectStopId if given. */
-    private void loadStopsFor(Route route, Integer selectStopId) {
+    // fills the stop combo box for a route; selects stopIdToSelect if it is not 0
+    private void loadStops(Route route, int stopIdToSelect) {
         stopBox.removeAllItems();
         if (route == null) {
             return;
         }
         try {
-            for (Stop s : routeService.getStops(route.getRouteId())) {
+            List<Stop> stops = routeService.getStops(route.getRouteId());
+            for (Stop s : stops) {
                 stopBox.addItem(s);
-                if (selectStopId != null && s.getStopId() == selectStopId) {
+                if (s.getStopId() == stopIdToSelect) {
                     stopBox.setSelectedItem(s);
                 }
             }
         } catch (ServiceException ex) {
-            UiUtil.error(this, ex.getMessage());
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -179,30 +177,40 @@ public class ApplicationPanel extends JPanel {
             return;
         }
         try {
-            int left = routeService.getSeatsLeft(r.getRouteId(), UiUtil.getDate(fromDate), UiUtil.getDate(toDate));
-            seatsLabel.setText(left + " of " + r.getCapacity() + (left == 0 ? "  (bus full for these dates)" : ""));
-            seatsLabel.setForeground(left > 0 ? UiUtil.GREEN : UiUtil.RED);
+            int seatsLeft = routeService.getSeatsLeft(r.getRouteId(), UiUtil.getDate(fromDate), UiUtil.getDate(toDate));
+            if (seatsLeft > 0) {
+                seatsLabel.setText(seatsLeft + " of " + r.getCapacity());
+                seatsLabel.setForeground(UiUtil.GREEN);
+            } else {
+                seatsLabel.setText(seatsLeft + " of " + r.getCapacity() + "  (bus full for these dates)");
+                seatsLabel.setForeground(UiUtil.RED);
+            }
         } catch (ServiceException ex) {
             seatsLabel.setText(ex.getMessage());
             seatsLabel.setForeground(UiUtil.RED);
         }
     }
 
-    /** INSERT a new application as DRAFT or SUBMITTED. */
-    private void create(boolean submitNow) {
+    // submitNow = true for "Submit application", false for "Save as draft"
+    private void createApplication(boolean submitNow) {
         Stop stop = (Stop) stopBox.getSelectedItem();
-        Integer stopId = (stop == null) ? null : stop.getStopId();
+        Integer stopId = null;
+        if (stop != null) {
+            stopId = stop.getStopId();
+        }
         try {
             int id = applicationService.createApplication(stopId, UiUtil.getDate(fromDate),
                     UiUtil.getDate(toDate), remarks.getText(), submitNow);
-            UiUtil.info(this, submitNow
-                    ? "Application #" + id + " submitted. The transport office will review it."
-                    : "Draft #" + id + " saved. Submit it from the list below when ready.");
+            if (submitNow) {
+                JOptionPane.showMessageDialog(this, "Application #" + id + " submitted. The transport office will review it.");
+            } else {
+                JOptionPane.showMessageDialog(this, "Draft #" + id + " saved. Submit it from the list below when ready.");
+            }
             remarks.setText("");
             loadMyApplications();
             updateSeats();
         } catch (ServiceException ex) {
-            UiUtil.error(this, ex.getMessage());
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -213,47 +221,51 @@ public class ApplicationPanel extends JPanel {
             for (Application a : myApps) {
                 appModel.addRow(new Object[] {
                     a.getApplicationId(), a.getRouteName(), a.getStopName(), a.getValidFrom(), a.getValidTo(),
-                    a.getStatus(), a.getAppliedAt().toLocalDate(), UiUtil.text(a.getAdminRemarks())});
+                    a.getStatus(), a.getAppliedAt().toLocalDate(), a.getAdminRemarks()});
             }
         } catch (ServiceException ex) {
-            UiUtil.error(this, ex.getMessage());
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
-    }
-
-    private Application selectedApp() {
-        int row = appTable.getSelectedRow();
-        if (row < 0) {
-            UiUtil.error(this, "Please select an application in the list first.");
-            return null;
-        }
-        return myApps.get(row);
     }
 
     private void submitSelectedDraft() {
-        Application a = selectedApp();
-        if (a == null) return;
+        int row = appTable.getSelectedRow();
+        if (row < 0) {
+            JOptionPane.showMessageDialog(this, "Please select an application in the list first.");
+            return;
+        }
+        Application a = myApps.get(row);
         try {
             applicationService.submitDraft(a.getApplicationId());
-            UiUtil.info(this, "Application #" + a.getApplicationId() + " submitted.");
+            JOptionPane.showMessageDialog(this, "Application #" + a.getApplicationId() + " submitted.");
             loadMyApplications();
         } catch (ServiceException ex) {
-            UiUtil.error(this, ex.getMessage());
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void deleteSelectedDraft() {
-        Application a = selectedApp();
-        if (a == null) return;
-        if (!"DRAFT".equals(a.getStatus())) {
-            UiUtil.error(this, "Only DRAFT applications can be deleted. Submitted and decided ones are kept as a record.");
+        int row = appTable.getSelectedRow();
+        if (row < 0) {
+            JOptionPane.showMessageDialog(this, "Please select an application in the list first.");
             return;
         }
-        if (!UiUtil.confirm(this, "Delete draft #" + a.getApplicationId() + "?")) return;
+        Application a = myApps.get(row);
+        if (!a.getStatus().equals("DRAFT")) {
+            JOptionPane.showMessageDialog(this,
+                    "Only DRAFT applications can be deleted. Submitted and decided ones are kept as a record.");
+            return;
+        }
+        int answer = JOptionPane.showConfirmDialog(this, "Delete draft #" + a.getApplicationId() + "?",
+                "Confirm", JOptionPane.YES_NO_OPTION);
+        if (answer != JOptionPane.YES_OPTION) {
+            return;
+        }
         try {
             applicationService.deleteDraft(a.getApplicationId());
             loadMyApplications();
         } catch (ServiceException ex) {
-            UiUtil.error(this, ex.getMessage());
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 }

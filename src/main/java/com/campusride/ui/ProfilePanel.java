@@ -7,6 +7,7 @@ import java.awt.GridBagLayout;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 
@@ -15,22 +16,20 @@ import com.campusride.service.ServiceException;
 import com.campusride.service.StudentService;
 import com.campusride.util.Session;
 
-/**
- * Screen: "My Profile" - view and edit the student's details (UPDATE students).
- * Username and roll number are shown but cannot be changed.
- */
+// "My Profile" tab: the student can see and edit their details.
+// Username and roll number are shown but can't be changed.
 public class ProfilePanel extends JPanel {
 
-    private final StudentService studentService = new StudentService();
-    private final StudentDashboard dashboard;
+    private StudentService studentService = new StudentService();
+    private StudentDashboard dashboard;
 
-    private final JTextField username = new JTextField(22);
-    private final JTextField rollNo = new JTextField(22);
-    private final JTextField fullName = new JTextField(22);
-    private final JComboBox<String> department = new JComboBox<>(LoginFrame.DEPARTMENTS);
-    private final JComboBox<Integer> year = new JComboBox<>(LoginFrame.YEARS);
-    private final JTextField phone = new JTextField(22);
-    private final JTextField email = new JTextField(22);
+    private JTextField username = new JTextField(22);
+    private JTextField rollNo = new JTextField(22);
+    private JTextField fullName = new JTextField(22);
+    private JComboBox<String> department = new JComboBox<>(LoginFrame.DEPARTMENTS);
+    private JComboBox<Integer> year = new JComboBox<>(LoginFrame.YEARS);
+    private JTextField phone = new JTextField(22);
+    private JTextField email = new JTextField(22);
 
     public ProfilePanel(StudentDashboard dashboard) {
         this.dashboard = dashboard;
@@ -43,26 +42,25 @@ public class ProfilePanel extends JPanel {
 
         JPanel form = UiUtil.section("My details");
         form.setLayout(new GridBagLayout());
-        int row = 0;
-        UiUtil.addRow(form, row++, "Username", username);
-        UiUtil.addRow(form, row++, "Roll number", rollNo);
-        UiUtil.addRow(form, row++, "Full name *", fullName);
-        UiUtil.addRow(form, row++, "Department *", department);
-        UiUtil.addRow(form, row++, "Year of study *", year);
-        UiUtil.addRow(form, row++, "Phone (10 digits) *", phone);
-        UiUtil.addRow(form, row++, "Email *", email);
+        UiUtil.addRow(form, 0, "Username", username);
+        UiUtil.addRow(form, 1, "Roll number", rollNo);
+        UiUtil.addRow(form, 2, "Full name *", fullName);
+        UiUtil.addRow(form, 3, "Department *", department);
+        UiUtil.addRow(form, 4, "Year of study *", year);
+        UiUtil.addRow(form, 5, "Phone (10 digits) *", phone);
+        UiUtil.addRow(form, 6, "Email *", email);
 
         JButton save = UiUtil.primaryButton("Save changes");
         save.addActionListener(e -> save());
-        JButton reset = UiUtil.secondaryButton("Undo changes");
-        reset.addActionListener(e -> loadProfile());
+        JButton undo = UiUtil.secondaryButton("Undo changes");
+        undo.addActionListener(e -> loadProfile());
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.setOpaque(false);
-        buttons.add(reset);
+        buttons.add(undo);
         buttons.add(save);
-        UiUtil.addWide(form, row, buttons);
+        UiUtil.addWide(form, 7, buttons);
 
-        // Keep the form at a sensible width at the top-left
+        // keep the form small in the top-left corner
         JPanel holder = new JPanel(new FlowLayout(FlowLayout.LEFT));
         holder.setOpaque(false);
         holder.add(form);
@@ -71,7 +69,7 @@ public class ProfilePanel extends JPanel {
         loadProfile();
     }
 
-    /** Fills the fields from the database. */
+    // fill the fields from the database
     public void loadProfile() {
         try {
             Student s = studentService.getMyProfile();
@@ -83,7 +81,7 @@ public class ProfilePanel extends JPanel {
             phone.setText(s.getPhone());
             email.setText(s.getEmail());
         } catch (ServiceException ex) {
-            UiUtil.error(this, ex.getMessage());
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -91,10 +89,10 @@ public class ProfilePanel extends JPanel {
         try {
             studentService.updateMyProfile(fullName.getText(), (String) department.getSelectedItem(),
                     (Integer) year.getSelectedItem(), phone.getText().trim(), email.getText());
-            UiUtil.info(this, "Profile saved.");
-            dashboard.refreshWelcome();
+            JOptionPane.showMessageDialog(this, "Profile saved.");
+            dashboard.refreshWelcome();   // the name in the header may have changed
         } catch (ServiceException ex) {
-            UiUtil.error(this, ex.getMessage());
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 }

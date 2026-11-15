@@ -10,32 +10,26 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
-import javax.swing.WindowConstants;
 
 import com.campusride.model.Route;
 import com.campusride.model.Stop;
 import com.campusride.service.AuthService;
 import com.campusride.util.Session;
 
-/**
- * Screen: the student's main window. A header with a Logout button and four
- * tabs: Routes & Timings, Apply for Pass, My Bus Pass, My Profile.
- */
+// Main window for a student: header with Logout, and 4 tabs.
 public class StudentDashboard extends JFrame {
 
-    private static final int TAB_APPLY = 1;
-
-    private final JTabbedPane tabs = new JTabbedPane();
-    private final JLabel welcome = new JLabel();
-    private final ApplicationPanel applicationPanel;
-    private final PassViewPanel passViewPanel;
+    private JTabbedPane tabs = new JTabbedPane();
+    private JLabel welcome = new JLabel();
+    private ApplicationPanel applicationPanel;
+    private PassViewPanel passViewPanel;
 
     public StudentDashboard() {
         super("CampusRide - Student");
-        setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
 
-        // ---- header with welcome text and logout ----
+        // header: title on the left, "Welcome, name" and Logout on the right
         JPanel header = UiUtil.header("CampusRide", "Student portal - routes, applications and your bus pass");
         welcome.setForeground(Color.WHITE);
         JButton logout = UiUtil.secondaryButton("Logout");
@@ -48,14 +42,14 @@ public class StudentDashboard extends JFrame {
         add(header, BorderLayout.NORTH);
         refreshWelcome();
 
-        // ---- tabs ----
-        applicationPanel = new ApplicationPanel(this);
+        applicationPanel = new ApplicationPanel();
         passViewPanel = new PassViewPanel();
         tabs.addTab("Routes & Timings", new RoutesPanel(this));
         tabs.addTab("Apply for Pass", applicationPanel);
         tabs.addTab("My Bus Pass", passViewPanel);
         tabs.addTab("My Profile", new ProfilePanel(this));
-        // Refresh status/pass data every time the student opens those tabs
+
+        // reload the data each time these tabs are opened, so the status is always up to date
         tabs.addChangeListener(e -> {
             if (tabs.getSelectedComponent() == applicationPanel) {
                 applicationPanel.loadMyApplications();
@@ -69,15 +63,18 @@ public class StudentDashboard extends JFrame {
         setLocationRelativeTo(null);
     }
 
-    /** RoutesPanel calls this: switch to the Apply tab with the form pre-filled. */
+    // RoutesPanel calls this when the student clicks "Apply for this stop"
     public void openApplicationFor(Route route, Stop stop, LocalDate from, LocalDate to) {
         applicationPanel.prefill(route, stop, from, to);
-        tabs.setSelectedIndex(TAB_APPLY);
+        tabs.setSelectedComponent(applicationPanel);
     }
 
-    /** Updates "Welcome, name" (after login or a profile edit). */
+    // after login or after editing the profile
     public void refreshWelcome() {
-        String name = Session.getStudent() == null ? "" : Session.getStudent().getFullName();
+        String name = "";
+        if (Session.getStudent() != null) {
+            name = Session.getStudent().getFullName();
+        }
         welcome.setText("Welcome, " + name);
     }
 
