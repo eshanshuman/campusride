@@ -3,16 +3,11 @@ package com.campusride.util;
 import com.campusride.model.Student;
 import com.campusride.model.User;
 
-/**
- * Remembers who is logged in while the app is running.
- * It is a simple "static holder": there is only one user per desktop app.
- */
-public final class Session {
+// Remembers who is logged in. It's a desktop app, so only one user at a time.
+public class Session {
 
-    private static User currentUser;        // set at login
-    private static Student currentStudent;  // set at login if role = STUDENT, else null
-
-    private Session() { }
+    private static User currentUser;
+    private static Student currentStudent;   // stays null when the admin logs in
 
     public static void login(User user, Student student) {
         currentUser = user;
@@ -24,12 +19,16 @@ public final class Session {
         currentStudent = null;
     }
 
-    public static User getUser() { return currentUser; }
+    public static User getUser() {
+        return currentUser;
+    }
 
-    public static Student getStudent() { return currentStudent; }
+    public static Student getStudent() {
+        return currentStudent;
+    }
 
-    /** Used after the student edits their profile. */
-    public static void setStudent(Student student) { currentStudent = student; }
-
-    public static boolean isLoggedIn() { return currentUser != null; }
+    // called after the student edits their profile
+    public static void setStudent(Student student) {
+        currentStudent = student;
+    }
 }

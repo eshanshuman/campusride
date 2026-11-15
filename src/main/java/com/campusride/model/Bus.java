@@ -1,6 +1,6 @@
 package com.campusride.model;
 
-/** One row of the buses table. */
+// one row of the buses table
 public class Bus {
     private int busId;
     private String regNo;
@@ -13,7 +13,9 @@ public class Bus {
     public int getCapacity() { return capacity; }
     public void setCapacity(int capacity) { this.capacity = capacity; }
 
-    /** Text shown when a Bus is put inside a JComboBox. */
+    // this text is what a JComboBox shows for a bus
     @Override
-    public String toString() { return regNo + " (" + capacity + " seats)"; }
+    public String toString() {
+        return regNo + " (" + capacity + " seats)";
+    }
 }

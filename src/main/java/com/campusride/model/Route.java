@@ -1,16 +1,14 @@
 package com.campusride.model;
 
-/**
- * One row of the routes table, plus two read-only fields (busRegNo, capacity)
- * that the DAO fills from a JOIN with buses, so screens need only one query.
- */
+// one row of the routes table
+// busRegNo and capacity are not in the routes table, they come from a JOIN with buses
 public class Route {
     private int routeId;
     private String routeName;
     private int busId;
     private boolean active;
-    private String busRegNo;   // from JOIN buses
-    private int capacity;      // from JOIN buses
+    private String busRegNo;
+    private int capacity;
 
     public int getRouteId() { return routeId; }
     public void setRouteId(int routeId) { this.routeId = routeId; }
@@ -25,7 +23,9 @@ public class Route {
     public int getCapacity() { return capacity; }
     public void setCapacity(int capacity) { this.capacity = capacity; }
 
-    /** Text shown when a Route is put inside a JComboBox. */
+    // this text is what a JComboBox shows for a route
     @Override
-    public String toString() { return routeName; }
+    public String toString() {
+        return routeName;
+    }
 }

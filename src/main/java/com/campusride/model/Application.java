@@ -3,25 +3,22 @@ package com.campusride.model;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-/**
- * One row of pass_applications, plus display-only fields filled by JOINs
- * (student name/roll no, stop name, route id/name) so tables are easy to show.
- * The route is NOT stored in the table - it comes from stop -> route.
- */
+// one row of the pass_applications table
+// we don't store the route here - the stop already tells us the route
 public class Application {
     private int applicationId;
     private int studentId;
     private int stopId;
     private LocalDate validFrom;
     private LocalDate validTo;
-    private String status;          // DRAFT, SUBMITTED, APPROVED, REJECTED
+    private String status;          // DRAFT, SUBMITTED, APPROVED or REJECTED
     private String remarks;
     private LocalDateTime appliedAt;
-    private Integer reviewedBy;     // Integer (not int) because it can be NULL
+    private Integer reviewedBy;     // Integer, not int, because it is NULL until an admin decides
     private LocalDateTime reviewedAt;
     private String adminRemarks;
 
-    // ---- display-only (from JOINs) ----
+    // extra fields filled from JOINs, only used to show the tables on screen
     private String studentName;
     private String rollNo;
     private String stopName;

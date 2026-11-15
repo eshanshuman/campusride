@@ -2,7 +2,7 @@ package com.campusride.model;
 
 import java.time.LocalDateTime;
 
-/** One row of the users table (a login account). */
+// one row of the users table
 public class User {
     private int userId;
     private String username;
@@ -24,5 +24,7 @@ public class User {
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 
-    public boolean isAdmin() { return "ADMIN".equals(role); }
+    public boolean isAdmin() {
+        return role.equals("ADMIN");
+    }
 }

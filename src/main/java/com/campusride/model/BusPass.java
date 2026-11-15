@@ -4,20 +4,18 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 
-/**
- * One row of bus_passes, plus display-only fields from JOINs.
- * An ACTIVE pass is the student's route allocation.
- */
+// one row of the bus_passes table
+// an ACTIVE pass means the student is allocated to that route
 public class BusPass {
     private int passId;
     private int applicationId;
-    private String passNo;
+    private String passNo;          // like CR-2026-00001
     private LocalDate validFrom;
     private LocalDate validTo;
-    private String status;          // ACTIVE, CANCELLED, EXPIRED
+    private String status;          // ACTIVE, CANCELLED or EXPIRED
     private LocalDateTime issuedAt;
 
-    // ---- display-only (from JOINs) ----
+    // extra fields filled from JOINs, only used to show the pass and passenger lists
     private String studentName;
     private String rollNo;
     private String phone;

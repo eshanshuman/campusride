@@ -1,78 +1,63 @@
 package com.campusride.util;
 
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
-import java.security.spec.KeySpec;
 import java.util.Base64;
 
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 
-/**
- * Password hashing with PBKDF2 (built into Java, no extra library).
- *
- * How it works:
- *  1. When a user registers we create a random 16-byte "salt".
- *  2. PBKDF2 mixes password + salt 65,536 times with HMAC-SHA256
- *     and gives a 256-bit hash. Doing it many times makes guessing slow.
- *  3. We store hash and salt (both as Base64 text) - never the password.
- *  4. At login we hash the typed password with the SAME salt and compare.
- *
- * The salt means two users with the same password get different hashes.
- */
-public final class PasswordUtil {
+// Password hashing with PBKDF2 (it is built into Java, no extra library).
+// We never store the real password, only the hash and the salt.
+public class PasswordUtil {
 
-    private static final String ALGORITHM  = "PBKDF2WithHmacSHA256";
-    private static final int    ITERATIONS = 65536;
-    private static final int    KEY_BITS   = 256;
-    private static final int    SALT_BYTES = 16;
+    // running the hash 65536 times makes guessing passwords very slow for an attacker
+    private static final int ITERATIONS = 65536;
+    private static final int KEY_LENGTH = 256;   // bits
 
-    private static final SecureRandom RANDOM = new SecureRandom();
+    private static SecureRandom random = new SecureRandom();
 
-    private PasswordUtil() { }   // utility class: no objects needed
-
-    /** Creates a new random salt, returned as Base64 text (24 characters). */
+    // A new random salt for every user, so two people with the same
+    // password still get different hashes.
     public static String newSalt() {
-        byte[] salt = new byte[SALT_BYTES];
-        RANDOM.nextBytes(salt);
+        byte[] salt = new byte[16];
+        random.nextBytes(salt);
         return Base64.getEncoder().encodeToString(salt);
     }
 
-    /** Hashes a password with the given Base64 salt; returns Base64 text (44 characters). */
-    public static String hash(char[] password, String saltBase64) {
-        byte[] salt = Base64.getDecoder().decode(saltBase64);
-        KeySpec spec = new PBEKeySpec(password, salt, ITERATIONS, KEY_BITS);
+    public static String hash(char[] password, String salt) {
+        byte[] saltBytes = Base64.getDecoder().decode(salt);
+        PBEKeySpec spec = new PBEKeySpec(password, saltBytes, ITERATIONS, KEY_LENGTH);
         try {
-            SecretKeyFactory factory = SecretKeyFactory.getInstance(ALGORITHM);
-            byte[] hash = factory.generateSecret(spec).getEncoded();
-            return Base64.getEncoder().encodeToString(hash);
+            SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+            byte[] hashBytes = factory.generateSecret(spec).getEncoded();
+            return Base64.getEncoder().encodeToString(hashBytes);
         } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
-            // Cannot happen on a normal Java 17 install, so we stop loudly.
-            throw new IllegalStateException("PBKDF2 is not available", e);
+            // every normal Java 17 has PBKDF2, so this should never happen
+            throw new RuntimeException("PBKDF2 is not available", e);
         }
     }
 
-    /** True if the typed password produces the stored hash. */
-    public static boolean verify(char[] password, String saltBase64, String expectedHash) {
-        String actual = hash(password, saltBase64);
-        // MessageDigest.isEqual compares in constant time (does not leak timing)
-        return java.security.MessageDigest.isEqual(actual.getBytes(), expectedHash.getBytes());
+    // At login: hash the typed password with the user's saved salt and compare.
+    public static boolean verify(char[] password, String salt, String savedHash) {
+        String newHash = hash(password, salt);
+        // MessageDigest.isEqual takes the same time even when the first characters differ,
+        // so nobody can guess the hash from how long the check takes
+        return MessageDigest.isEqual(newHash.getBytes(), savedHash.getBytes());
     }
 
-    /**
-     * Small helper used to create the hashes in sql/02_sample_data.sql.
-     * Usage:  java com.campusride.util.PasswordUtil  MyPassword1
-     * Prints a salt and hash you can paste into an INSERT statement.
-     */
+    // We used this to make the password hashes in sql/02_sample_data.sql
+    // Run:  java com.campusride.util.PasswordUtil Admin@2026
     public static void main(String[] args) {
         if (args.length == 0) {
-            System.out.println("Usage: java com.campusride.util.PasswordUtil <password> [more passwords]");
+            System.out.println("Usage: java com.campusride.util.PasswordUtil <password>");
             return;
         }
-        for (String pwd : args) {
+        for (String password : args) {
             String salt = newSalt();
-            System.out.println(pwd + "  salt=" + salt + "  hash=" + hash(pwd.toCharArray(), salt));
+            System.out.println(password + "  salt=" + salt + "  hash=" + hash(password.toCharArray(), salt));
         }
     }
 }

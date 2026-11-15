@@ -2,12 +2,12 @@ package com.campusride.model;
 
 import java.time.LocalTime;
 
-/** One row of the route_stops table. */
+// one row of the route_stops table
 public class Stop {
     private int stopId;
     private int routeId;
     private String stopName;
-    private int stopSeq;
+    private int stopSeq;           // order of the stop on the route (1, 2, 3 ...)
     private LocalTime pickupTime;
 
     public int getStopId() { return stopId; }
@@ -21,7 +21,9 @@ public class Stop {
     public LocalTime getPickupTime() { return pickupTime; }
     public void setPickupTime(LocalTime pickupTime) { this.pickupTime = pickupTime; }
 
-    /** Text shown when a Stop is put inside a JComboBox. */
+    // this text is what a JComboBox shows for a stop
     @Override
-    public String toString() { return stopSeq + ". " + stopName + " (" + pickupTime + ")"; }
+    public String toString() {
+        return stopSeq + ". " + stopName + " (" + pickupTime + ")";
+    }
 }

@@ -1,6 +1,6 @@
 package com.campusride.model;
 
-/** One row of the students table (profile of a STUDENT user). */
+// one row of the students table (the profile of a STUDENT user)
 public class Student {
     private int studentId;
     private int userId;
