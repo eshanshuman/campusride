@@ -12,12 +12,12 @@ import com.campusride.model.Route;
 import com.campusride.model.Stop;
 import com.campusride.util.DBConnection;
 
-/** Read-only route information for students (routes, stops, timings, seats). */
+// route information for students: routes, stops, timings and seats left
 public class RouteService {
 
-    private final RouteDAO routeDAO = new RouteDAO();
-    private final StopDAO stopDAO = new StopDAO();
-    private final PassDAO passDAO = new PassDAO();
+    private RouteDAO routeDAO = new RouteDAO();
+    private StopDAO stopDAO = new StopDAO();
+    private PassDAO passDAO = new PassDAO();
 
     public List<Route> getActiveRoutes() throws ServiceException {
         try (Connection con = DBConnection.getConnection()) {
@@ -35,11 +35,8 @@ public class RouteService {
         }
     }
 
-    /**
-     * Seats left on a route for a period = bus capacity minus ACTIVE passes on
-     * that route whose dates overlap the period. (We count every overlapping
-     * pass, which is simple and always safe - it can never overbook.)
-     */
+    // seats left = bus capacity - ACTIVE passes on this route that overlap the dates.
+    // We count every overlapping pass, which is simple and can never overbook the bus.
     public int getSeatsLeft(int routeId, LocalDate from, LocalDate to) throws ServiceException {
         Validation.dateRange(from, to);
         try (Connection con = DBConnection.getConnection()) {
@@ -47,8 +44,12 @@ public class RouteService {
             if (route == null) {
                 throw new ServiceException("This route no longer exists.");
             }
-            int used = passDAO.countActiveOverlapOnRoute(con, routeId, from, to);
-            return Math.max(0, route.getCapacity() - used);
+            int seatsUsed = passDAO.countActiveOverlapOnRoute(con, routeId, from, to);
+            int seatsLeft = route.getCapacity() - seatsUsed;
+            if (seatsLeft < 0) {
+                seatsLeft = 0;
+            }
+            return seatsLeft;
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
         }

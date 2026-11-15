@@ -12,23 +12,20 @@ import com.campusride.util.DBConnection;
 import com.campusride.util.PasswordUtil;
 import com.campusride.util.Session;
 
-/** Login, registration and logout. */
+// login, register and logout
 public class AuthService {
 
-    private final UserDAO userDAO = new UserDAO();
-    private final StudentDAO studentDAO = new StudentDAO();
+    private UserDAO userDAO = new UserDAO();
+    private StudentDAO studentDAO = new StudentDAO();
 
-    /**
-     * Checks username + password. On success stores the user in Session and
-     * returns it. We give the SAME message for "no such user" and "wrong
-     * password", so nobody can find out which usernames exist.
-     */
     public User login(String username, char[] password) throws ServiceException {
         if (username == null || username.trim().isEmpty() || password == null || password.length == 0) {
             throw new ServiceException("Please enter your username and password.");
         }
         try (Connection con = DBConnection.getConnection()) {
             User user = userDAO.findByUsername(con, username.trim());
+            // same message for "no such user" and "wrong password",
+            // so nobody can find out which usernames exist
             if (user == null || !PasswordUtil.verify(password, user.getPasswordSalt(), user.getPasswordHash())) {
                 throw new ServiceException("Incorrect username or password.");
             }
@@ -40,20 +37,15 @@ public class AuthService {
             return user;
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
-        } finally {
-            Arrays.fill(password, ' ');   // wipe the password from memory
         }
     }
 
-    /**
-     * Registers a new STUDENT. Two INSERTs (users, then students) run in ONE
-     * transaction: if the second fails, the first is rolled back, so we never
-     * get a login without a student profile.
-     */
+    // Registering inserts into users AND students. We do both in one transaction,
+    // so if the second insert fails we never end up with a login that has no profile.
     public void registerStudent(String username, char[] password, char[] confirm, Student s)
             throws ServiceException {
-        // ---- 1. validate every field (friendly messages) ----
-        String uname = Validation.username(username);
+        // 1. check every field
+        String cleanUsername = Validation.username(username);
         Validation.password(password);
         if (!Arrays.equals(password, confirm)) {
             throw new ServiceException("The two passwords do not match.");
@@ -65,36 +57,37 @@ public class AuthService {
         s.setPhone(Validation.phone(s.getPhone()));
         s.setEmail(Validation.email(s.getEmail()));
 
-        // ---- 2. save in one transaction ----
+        // 2. save both rows in one transaction
         try (Connection con = DBConnection.getConnection()) {
             con.setAutoCommit(false);
             try {
-                // Friendly uniqueness checks first (the UNIQUE keys are the final guard)
-                if (userDAO.usernameExists(con, uname)) {
+                // check first so the user gets a nice message (the UNIQUE keys are the real guard)
+                if (userDAO.usernameExists(con, cleanUsername)) {
                     throw new ServiceException("That username is already taken. Please choose another.");
                 }
                 if (studentDAO.rollNoExists(con, s.getRollNo(), 0)) {
                     throw new ServiceException("That roll number is already registered.");
                 }
+
                 User u = new User();
-                u.setUsername(uname);
+                u.setUsername(cleanUsername);
                 u.setRole("STUDENT");
                 u.setPasswordSalt(PasswordUtil.newSalt());
                 u.setPasswordHash(PasswordUtil.hash(password, u.getPasswordSalt()));
-                int userId = userDAO.insert(con, u);
+                int newUserId = userDAO.insert(con, u);
 
-                s.setUserId(userId);
+                s.setUserId(newUserId);
                 studentDAO.insert(con, s);
                 con.commit();
-            } catch (ServiceException | SQLException e) {
+            } catch (ServiceException e) {
+                con.rollback();
+                throw e;
+            } catch (SQLException e) {
                 con.rollback();
                 throw e;
             }
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
-        } finally {
-            Arrays.fill(password, ' ');
-            if (confirm != null) Arrays.fill(confirm, ' ');
         }
     }
 

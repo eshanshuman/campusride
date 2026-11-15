@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 
 import com.campusride.dao.ApplicationDAO;
@@ -20,24 +21,21 @@ import com.campusride.model.Stop;
 import com.campusride.util.DBConnection;
 import com.campusride.util.Session;
 
-/**
- * Everything the transport admin does: approve/reject (with the capacity
- * transaction), passenger lists, and maintaining buses, routes and stops.
- */
+// Everything the transport admin does:
+// approve/reject, passenger lists, and adding/removing buses, routes and stops.
 public class AdminService {
 
-    private final ApplicationDAO appDAO = new ApplicationDAO();
-    private final PassDAO passDAO = new PassDAO();
-    private final RouteDAO routeDAO = new RouteDAO();
-    private final StudentDAO studentDAO = new StudentDAO();
-    private final BusDAO busDAO = new BusDAO();
-    private final StopDAO stopDAO = new StopDAO();
+    private ApplicationDAO appDAO = new ApplicationDAO();
+    private PassDAO passDAO = new PassDAO();
+    private RouteDAO routeDAO = new RouteDAO();
+    private StudentDAO studentDAO = new StudentDAO();
+    private BusDAO busDAO = new BusDAO();
+    private StopDAO stopDAO = new StopDAO();
 
-    // ================================================================ approvals
+    // ---------- Approvals ----------
 
-    /** Applications waiting for a decision. Also marks old passes EXPIRED first. */
     public List<Application> getPendingApplications() throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         try (Connection con = DBConnection.getConnection()) {
             passDAO.expireOldPasses(con);
             return appDAO.findByStatus(con, "SUBMITTED");
@@ -46,49 +44,35 @@ public class AdminService {
         }
     }
 
-    /** Numbers for the capacity panel of one application. */
+    // numbers for the "Capacity check" box
     public CapacityInfo getCapacityInfo(Application app) throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         try (Connection con = DBConnection.getConnection()) {
             Route route = routeDAO.findById(con, app.getRouteId());
             if (route == null) {
                 throw new ServiceException("The route of this application no longer exists.");
             }
-            int used = passDAO.countActiveOverlapOnRoute(con, route.getRouteId(), app.getValidFrom(), app.getValidTo());
-            boolean overlap = passDAO.countActiveOverlapForStudent(
-                    con, app.getStudentId(), app.getValidFrom(), app.getValidTo()) > 0;
-            return new CapacityInfo(route.getRouteName(), route.getBusRegNo(), route.getCapacity(), used, overlap);
+            int seatsUsed = passDAO.countActiveOverlapOnRoute(con, route.getRouteId(), app.getValidFrom(), app.getValidTo());
+            int studentPasses = passDAO.countActiveOverlapForStudent(con, app.getStudentId(), app.getValidFrom(), app.getValidTo());
+            boolean studentHasPass = studentPasses > 0;
+            return new CapacityInfo(route.getRouteName(), route.getBusRegNo(), route.getCapacity(), seatsUsed, studentHasPass);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
         }
     }
 
-    /**
-     * APPROVE = ONE TRANSACTION. Either everything below happens, or nothing:
-     *
-     *  1. setAutoCommit(false)                         - start the transaction
-     *  2. SELECT route ... FOR UPDATE                  - lock the route (one approval per route at a time)
-     *  3. SELECT student ... FOR UPDATE                - lock the student
-     *  4. re-check: application still SUBMITTED, route active,
-     *     student has no overlapping ACTIVE pass,
-     *     ACTIVE passes on route overlapping the dates < bus capacity
-     *  5. UPDATE application -> APPROVED
-     *  6. INSERT bus_passes with a new unique pass_no
-     *  7. commit                                       - or rollback on ANY failure
-     *
-     * We use READ COMMITTED isolation so that, once we hold the locks, every
-     * COUNT sees the latest committed passes (another admin's approval that
-     * finished a moment ago is counted).
-     *
-     * Returns the new pass number, e.g. "CR-2026-00003".
-     */
+    // Approve = ONE transaction. Either all of it happens or none of it.
+    // Returns the new pass number, e.g. "CR-2026-00003".
     public String approve(int applicationId, String adminRemarks) throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         int adminUserId = Session.getUser().getUserId();
         String remarks = cleanRemarks(adminRemarks);
 
         try (Connection con = DBConnection.getConnection()) {
+            // READ COMMITTED: after we get the locks, our COUNT queries see passes
+            // that another admin committed just a moment ago
             con.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+            // 1. start the transaction
             con.setAutoCommit(false);
             try {
                 Application app = appDAO.findById(con, applicationId);
@@ -96,14 +80,15 @@ public class AdminService {
                     throw new ServiceException("Application not found.");
                 }
 
-                // ---- 2 + 3: take the locks (always route first, then student) ----
+                // 2. lock the route so two admins can't take the same seat
                 Route route = routeDAO.findByIdForUpdate(con, app.getRouteId());
                 if (route == null) {
                     throw new ServiceException("The route of this application no longer exists.");
                 }
+                // 3. lock the student so they can't get two passes at the same time
                 studentDAO.lockById(con, app.getStudentId());
 
-                // ---- 4: re-check every rule while holding the locks ----
+                // 4. check everything again now that we hold the locks
                 String status = appDAO.lockAndGetStatus(con, applicationId);
                 if (!"SUBMITTED".equals(status)) {
                     throw new ServiceException("This application is already " + status + ".");
@@ -114,29 +99,32 @@ public class AdminService {
                 LocalDate from = app.getValidFrom();
                 LocalDate to = app.getValidTo();
                 if (passDAO.countActiveOverlapForStudent(con, app.getStudentId(), from, to) > 0) {
-                    throw new ServiceException(app.getStudentName()
-                            + " already has an ACTIVE pass overlapping these dates.");
+                    throw new ServiceException(app.getStudentName() + " already has an ACTIVE pass overlapping these dates.");
                 }
-                int used = passDAO.countActiveOverlapOnRoute(con, route.getRouteId(), from, to);
-                if (used >= route.getCapacity()) {
+                int seatsUsed = passDAO.countActiveOverlapOnRoute(con, route.getRouteId(), from, to);
+                if (seatsUsed >= route.getCapacity()) {
                     throw new ServiceException("Bus " + route.getBusRegNo() + " is full for this period ("
-                            + used + " of " + route.getCapacity() + " seats taken). Cannot approve.");
+                            + seatsUsed + " of " + route.getCapacity() + " seats taken). Cannot approve.");
                 }
 
-                // ---- 5: application -> APPROVED ----
-                if (appDAO.review(con, applicationId, "APPROVED", adminUserId, remarks) != 1) {
+                // 5. mark the application APPROVED
+                int rows = appDAO.review(con, applicationId, "APPROVED", adminUserId, remarks);
+                if (rows != 1) {
                     throw new ServiceException("This application was changed by someone else. Please refresh.");
                 }
 
-                // ---- 6: issue the pass ----
+                // 6. issue the pass
                 String passNo = passDAO.nextPassNo(con, LocalDate.now().getYear());
                 passDAO.insert(con, applicationId, passNo, from, to);
 
-                // ---- 7: make it permanent ----
+                // 7. save everything
                 con.commit();
                 return passNo;
-            } catch (ServiceException | SQLException e) {
-                con.rollback();      // undo the UPDATE/INSERT, release the locks
+            } catch (ServiceException e) {
+                con.rollback();   // undo the update/insert and release the locks
+                throw e;
+            } catch (SQLException e) {
+                con.rollback();
                 throw e;
             }
         } catch (SQLException e) {
@@ -144,12 +132,13 @@ public class AdminService {
         }
     }
 
-    /** REJECT: only a SUBMITTED application, and a reason is required. */
+    // only a SUBMITTED application can be rejected, and the admin must give a reason
     public void reject(int applicationId, String adminRemarks) throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         String remarks = Validation.required(adminRemarks, "Reason for rejection", 255);
         try (Connection con = DBConnection.getConnection()) {
-            if (appDAO.review(con, applicationId, "REJECTED", Session.getUser().getUserId(), remarks) != 1) {
+            int rows = appDAO.review(con, applicationId, "REJECTED", Session.getUser().getUserId(), remarks);
+            if (rows != 1) {
                 throw new ServiceException("This application is no longer waiting for a decision. Please refresh.");
             }
         } catch (SQLException e) {
@@ -157,10 +146,10 @@ public class AdminService {
         }
     }
 
-    // ========================================================= passenger lists
+    // ---------- Passenger lists ----------
 
     public List<Route> getAllRoutes() throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         try (Connection con = DBConnection.getConnection()) {
             return routeDAO.findAll(con);
         } catch (SQLException e) {
@@ -168,9 +157,8 @@ public class AdminService {
         }
     }
 
-    /** Current and upcoming ACTIVE passes on a route, in stop order. */
     public List<BusPass> getPassengers(int routeId) throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         try (Connection con = DBConnection.getConnection()) {
             passDAO.expireOldPasses(con);
             return passDAO.findPassengers(con, routeId);
@@ -179,11 +167,12 @@ public class AdminService {
         }
     }
 
-    /** Cancels an ACTIVE pass (frees the seat). Passes are never deleted. */
+    // cancelling frees the seat; passes are never deleted
     public void cancelPass(int passId) throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         try (Connection con = DBConnection.getConnection()) {
-            if (passDAO.cancel(con, passId) != 1) {
+            int rows = passDAO.cancel(con, passId);
+            if (rows != 1) {
                 throw new ServiceException("Only ACTIVE passes can be cancelled.");
             }
         } catch (SQLException e) {
@@ -191,10 +180,10 @@ public class AdminService {
         }
     }
 
-    // ===================================================== buses / routes / stops
+    // ---------- Buses, routes and stops ----------
 
     public List<Bus> getAllBuses() throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         try (Connection con = DBConnection.getConnection()) {
             return busDAO.findAll(con);
         } catch (SQLException e) {
@@ -203,7 +192,7 @@ public class AdminService {
     }
 
     public List<Bus> getUnassignedBuses() throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         try (Connection con = DBConnection.getConnection()) {
             return busDAO.findUnassigned(con);
         } catch (SQLException e) {
@@ -212,9 +201,9 @@ public class AdminService {
     }
 
     public void addBus(String regNo, String capacityText) throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         String reg = Validation.required(regNo, "Registration number", 15).toUpperCase();
-        int capacity = parsePositiveInt(capacityText, "Capacity");
+        int capacity = readPositiveNumber(capacityText, "Capacity");
         try (Connection con = DBConnection.getConnection()) {
             busDAO.insert(con, reg, capacity);
         } catch (SQLException e) {
@@ -222,15 +211,13 @@ public class AdminService {
         }
     }
 
-    /**
-     * Changes a bus's capacity. It may not go below the number of passengers
-     * who currently hold ACTIVE passes on that bus's route.
-     */
+    // capacity can't go below the number of people who already have ACTIVE passes on that bus
     public void changeCapacity(int busId, String capacityText) throws ServiceException {
-        requireAdmin();
-        int capacity = parsePositiveInt(capacityText, "Capacity");
+        checkAdmin();
+        int capacity = readPositiveNumber(capacityText, "Capacity");
         try (Connection con = DBConnection.getConnection()) {
-            for (Route r : routeDAO.findAll(con)) {
+            List<Route> routes = routeDAO.findAll(con);
+            for (Route r : routes) {
                 if (r.getBusId() == busId) {
                     int passengers = passDAO.findPassengers(con, r.getRouteId()).size();
                     if (capacity < passengers) {
@@ -246,9 +233,10 @@ public class AdminService {
     }
 
     public void deleteBus(int busId) throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         try (Connection con = DBConnection.getConnection()) {
-            if (busDAO.deleteIfUnused(con, busId) != 1) {
+            int rows = busDAO.deleteIfUnused(con, busId);
+            if (rows != 1) {
                 throw new ServiceException("This bus is assigned to a route, so it cannot be deleted.");
             }
         } catch (SQLException e) {
@@ -257,7 +245,7 @@ public class AdminService {
     }
 
     public void addRoute(String routeName, Bus bus) throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         String name = Validation.required(routeName, "Route name", 60);
         if (bus == null) {
             throw new ServiceException("Please choose a free bus for the route (add a bus first if none is free).");
@@ -270,7 +258,7 @@ public class AdminService {
     }
 
     public void setRouteActive(int routeId, boolean active) throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         try (Connection con = DBConnection.getConnection()) {
             routeDAO.setActive(con, routeId, active);
         } catch (SQLException e) {
@@ -279,9 +267,10 @@ public class AdminService {
     }
 
     public void deleteRoute(int routeId) throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         try (Connection con = DBConnection.getConnection()) {
-            if (routeDAO.deleteIfUnused(con, routeId) != 1) {
+            int rows = routeDAO.deleteIfUnused(con, routeId);
+            if (rows != 1) {
                 throw new ServiceException("This route still has stops. Delete its stops first "
                         + "(or simply mark the route inactive).");
             }
@@ -291,7 +280,7 @@ public class AdminService {
     }
 
     public List<Stop> getStops(int routeId) throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         try (Connection con = DBConnection.getConnection()) {
             return stopDAO.findByRoute(con, routeId);
         } catch (SQLException e) {
@@ -299,18 +288,18 @@ public class AdminService {
         }
     }
 
-    /** timeText must look like 07:45 (24-hour clock). */
+    // pickup time is typed like 07:45 (24-hour clock)
     public void addStop(Route route, String stopName, String seqText, String timeText) throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         if (route == null) {
             throw new ServiceException("Please select a route first.");
         }
         String name = Validation.required(stopName, "Stop name", 80);
-        int seq = parsePositiveInt(seqText, "Stop order");
+        int seq = readPositiveNumber(seqText, "Stop order");
         LocalTime time;
         try {
             time = LocalTime.parse(Validation.required(timeText, "Pickup time", 5));
-        } catch (java.time.format.DateTimeParseException e) {
+        } catch (DateTimeParseException e) {
             throw new ServiceException("Pickup time must look like 07:45 (24-hour clock).");
         }
         try (Connection con = DBConnection.getConnection()) {
@@ -321,9 +310,10 @@ public class AdminService {
     }
 
     public void deleteStop(int stopId) throws ServiceException {
-        requireAdmin();
+        checkAdmin();
         try (Connection con = DBConnection.getConnection()) {
-            if (stopDAO.deleteIfUnused(con, stopId) != 1) {
+            int rows = stopDAO.deleteIfUnused(con, stopId);
+            if (rows != 1) {
                 throw new ServiceException("Students have applied for this stop, so it cannot be deleted.");
             }
         } catch (SQLException e) {
@@ -331,27 +321,30 @@ public class AdminService {
         }
     }
 
-    // ------------------------------------------------------------------ helpers
+    // ---------- small helpers ----------
 
-    private void requireAdmin() throws ServiceException {
+    private void checkAdmin() throws ServiceException {
         if (Session.getUser() == null || !Session.getUser().isAdmin()) {
             throw new ServiceException("Only the transport admin can do this.");
         }
     }
 
-    private int parsePositiveInt(String text, String fieldName) throws ServiceException {
-        String v = Validation.required(text, fieldName, 6);
+    // turns text like "40" into a number bigger than 0
+    private int readPositiveNumber(String text, String fieldName) throws ServiceException {
+        String value = Validation.required(text, fieldName, 6);
+        int number;
         try {
-            int n = Integer.parseInt(v);
-            if (n <= 0) {
-                throw new NumberFormatException();
-            }
-            return n;
+            number = Integer.parseInt(value);
         } catch (NumberFormatException e) {
             throw new ServiceException(fieldName + " must be a whole number greater than 0.");
         }
+        if (number <= 0) {
+            throw new ServiceException(fieldName + " must be a whole number greater than 0.");
+        }
+        return number;
     }
 
+    // empty remarks are saved as NULL
     private String cleanRemarks(String remarks) throws ServiceException {
         if (remarks == null || remarks.trim().isEmpty()) {
             return null;

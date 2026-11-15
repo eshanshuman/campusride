@@ -216,14 +216,14 @@ public class AdminDashboard extends JFrame {
             CapacityInfo info = adminService.getCapacityInfo(a);
             capRoute.setText(info.getRouteName() + " / " + info.getBusRegNo());
             capCapacity.setText(String.valueOf(info.getCapacity()));
-            capActive.setText(String.valueOf(info.getActiveOverlapping()));
+            capActive.setText(String.valueOf(info.getSeatsUsed()));
             capSeatsLeft.setText(String.valueOf(info.getSeatsLeft()));
-            capOverlap.setText(info.isStudentHasOverlap() ? "YES" : "No");
-            capOverlap.setForeground(info.isStudentHasOverlap() ? UiUtil.RED : UiUtil.GREEN);
+            capOverlap.setText(info.isStudentHasPass() ? "YES" : "No");
+            capOverlap.setForeground(info.isStudentHasPass() ? UiUtil.RED : UiUtil.GREEN);
             if (info.canApprove()) {
                 capVerdict.setText("OK to approve");
                 capVerdict.setForeground(UiUtil.GREEN);
-            } else if (info.isStudentHasOverlap()) {
+            } else if (info.isStudentHasPass()) {
                 capVerdict.setText("Cannot approve: student already has a pass");
                 capVerdict.setForeground(UiUtil.RED);
             } else {

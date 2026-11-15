@@ -8,12 +8,11 @@ import com.campusride.model.Student;
 import com.campusride.util.DBConnection;
 import com.campusride.util.Session;
 
-/** Profile of the logged-in student. */
+// profile of the logged-in student
 public class StudentService {
 
-    private final StudentDAO studentDAO = new StudentDAO();
+    private StudentDAO studentDAO = new StudentDAO();
 
-    /** Re-reads the logged-in student's profile from the database. */
     public Student getMyProfile() throws ServiceException {
         try (Connection con = DBConnection.getConnection()) {
             Student s = studentDAO.findById(con, currentStudentId());
@@ -24,7 +23,7 @@ public class StudentService {
         }
     }
 
-    /** Validates and saves the edited profile (roll number cannot change). */
+    // roll number can't be changed, so it is not a parameter here
     public void updateMyProfile(String fullName, String department, int year, String phone, String email)
             throws ServiceException {
         Student s = new Student();
@@ -44,7 +43,7 @@ public class StudentService {
         }
     }
 
-    /** student_id of whoever is logged in; refuses if it is not a student. */
+    // student_id of whoever is logged in (ApplicationService uses this too)
     static int currentStudentId() throws ServiceException {
         if (Session.getStudent() == null) {
             throw new ServiceException("Please log in as a student first.");
