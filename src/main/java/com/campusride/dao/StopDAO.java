@@ -11,20 +11,18 @@ import java.util.List;
 
 import com.campusride.model.Stop;
 
-/** SQL for the route_stops table. */
+// SQL for the route_stops table
 public class StopDAO {
 
-    private static final String COLUMNS = "stop_id, route_id, stop_name, stop_seq, pickup_time";
-
-    /** Stops of one route in travel order. */
+    // stops of one route, in the order the bus reaches them
     public List<Stop> findByRoute(Connection con, int routeId) throws SQLException {
-        String sql = "SELECT " + COLUMNS + " FROM route_stops WHERE route_id = ? ORDER BY stop_seq";
+        String sql = "SELECT * FROM route_stops WHERE route_id = ? ORDER BY stop_seq";
         List<Stop> list = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setInt(1, routeId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    list.add(map(rs));
+                    list.add(readStop(rs));
                 }
             }
         }
@@ -32,11 +30,14 @@ public class StopDAO {
     }
 
     public Stop findById(Connection con, int stopId) throws SQLException {
-        String sql = "SELECT " + COLUMNS + " FROM route_stops WHERE stop_id = ?";
+        String sql = "SELECT * FROM route_stops WHERE stop_id = ?";
         try (PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setInt(1, stopId);
             try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? map(rs) : null;
+                if (rs.next()) {
+                    return readStop(rs);
+                }
+                return null;
             }
         }
     }
@@ -52,10 +53,10 @@ public class StopDAO {
         }
     }
 
-    /** Deletes a stop only if no application refers to it. Returns rows deleted. */
+    // only deletes the stop if no application uses it. Returns 0 if not deleted.
     public int deleteIfUnused(Connection con, int stopId) throws SQLException {
         String sql = "DELETE FROM route_stops WHERE stop_id = ? "
-                   + "AND NOT EXISTS (SELECT 1 FROM pass_applications a WHERE a.stop_id = ?)";
+                   + "AND NOT EXISTS (SELECT 1 FROM pass_applications WHERE pass_applications.stop_id = ?)";
         try (PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setInt(1, stopId);
             ps.setInt(2, stopId);
@@ -63,7 +64,7 @@ public class StopDAO {
         }
     }
 
-    private Stop map(ResultSet rs) throws SQLException {
+    private Stop readStop(ResultSet rs) throws SQLException {
         Stop s = new Stop();
         s.setStopId(rs.getInt("stop_id"));
         s.setRouteId(rs.getInt("route_id"));

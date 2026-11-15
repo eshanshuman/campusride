@@ -8,37 +8,37 @@ import java.sql.Statement;
 
 import com.campusride.model.Student;
 
-/** SQL for the students table. */
+// SQL for the students table
 public class StudentDAO {
 
-    private static final String COLUMNS =
-        "student_id, user_id, roll_no, full_name, department, year_of_study, phone, email";
-
     public Student findByUserId(Connection con, int userId) throws SQLException {
-        String sql = "SELECT " + COLUMNS + " FROM students WHERE user_id = ?";
+        String sql = "SELECT * FROM students WHERE user_id = ?";
         try (PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setInt(1, userId);
             try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? map(rs) : null;
+                if (rs.next()) {
+                    return readStudent(rs);
+                }
+                return null;
             }
         }
     }
 
     public Student findById(Connection con, int studentId) throws SQLException {
-        String sql = "SELECT " + COLUMNS + " FROM students WHERE student_id = ?";
+        String sql = "SELECT * FROM students WHERE student_id = ?";
         try (PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setInt(1, studentId);
             try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? map(rs) : null;
+                if (rs.next()) {
+                    return readStudent(rs);
+                }
+                return null;
             }
         }
     }
 
-    /**
-     * Locks the student's row until the current transaction ends (FOR UPDATE).
-     * Used during approval so two admins cannot give the same student two
-     * overlapping passes at the same moment. Returns false if not found.
-     */
+    // FOR UPDATE locks this student's row until we commit or rollback.
+    // Used while approving, so two admins can't give the same student two passes at once.
     public boolean lockById(Connection con, int studentId) throws SQLException {
         String sql = "SELECT student_id FROM students WHERE student_id = ? FOR UPDATE";
         try (PreparedStatement ps = con.prepareStatement(sql)) {
@@ -49,7 +49,8 @@ public class StudentDAO {
         }
     }
 
-    /** True if a student other than excludeStudentId already uses this roll number. */
+    // true if some OTHER student already has this roll number
+    // (registration passes 0 as excludeStudentId because no student has id 0)
     public boolean rollNoExists(Connection con, String rollNo, int excludeStudentId) throws SQLException {
         String sql = "SELECT 1 FROM students WHERE roll_no = ? AND student_id <> ?";
         try (PreparedStatement ps = con.prepareStatement(sql)) {
@@ -61,7 +62,7 @@ public class StudentDAO {
         }
     }
 
-    /** INSERT used by registration; returns the new student_id. */
+    // used when a student registers, returns the new student_id
     public int insert(Connection con, Student s) throws SQLException {
         String sql = "INSERT INTO students (user_id, roll_no, full_name, department, year_of_study, phone, email) "
                    + "VALUES (?, ?, ?, ?, ?, ?, ?)";
@@ -81,7 +82,7 @@ public class StudentDAO {
         }
     }
 
-    /** UPDATE used by "Edit profile". The roll number cannot be changed after registration. */
+    // edit profile - the roll number can't be changed, so it is not in the UPDATE
     public int update(Connection con, Student s) throws SQLException {
         String sql = "UPDATE students SET full_name = ?, department = ?, year_of_study = ?, phone = ?, email = ? "
                    + "WHERE student_id = ?";
@@ -96,7 +97,7 @@ public class StudentDAO {
         }
     }
 
-    private Student map(ResultSet rs) throws SQLException {
+    private Student readStudent(ResultSet rs) throws SQLException {
         Student s = new Student();
         s.setStudentId(rs.getInt("student_id"));
         s.setUserId(rs.getInt("user_id"));

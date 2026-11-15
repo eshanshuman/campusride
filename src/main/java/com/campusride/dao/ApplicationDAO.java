@@ -13,46 +13,41 @@ import java.util.List;
 
 import com.campusride.model.Application;
 
-/**
- * SQL for the pass_applications table.
- * The route of an application is found with a JOIN through its stop
- * (pass_applications -> route_stops -> routes); it is never stored twice.
- */
+// SQL for the pass_applications table.
+// We find the route of an application by joining application -> stop -> route.
 public class ApplicationDAO {
 
-    private static final String SELECT_JOIN =
-        "SELECT a.application_id, a.student_id, a.stop_id, a.valid_from, a.valid_to, a.status, "
-      + "       a.remarks, a.applied_at, a.reviewed_by, a.reviewed_at, a.admin_remarks, "
-      + "       s.full_name, s.roll_no, st.stop_name, st.route_id, r.route_name "
+    private static final String SELECT_APPS =
+        "SELECT a.*, s.full_name, s.roll_no, st.stop_name, st.route_id, r.route_name "
       + "FROM pass_applications a "
-      + "JOIN students    s  ON s.student_id = a.student_id "
-      + "JOIN route_stops st ON st.stop_id   = a.stop_id "
-      + "JOIN routes      r  ON r.route_id   = st.route_id ";
+      + "JOIN students s     ON s.student_id = a.student_id "
+      + "JOIN route_stops st ON st.stop_id = a.stop_id "
+      + "JOIN routes r       ON r.route_id = st.route_id ";
 
-    /** All applications of one student, newest first. */
+    // all applications of one student, newest first
     public List<Application> findByStudent(Connection con, int studentId) throws SQLException {
-        String sql = SELECT_JOIN + "WHERE a.student_id = ? ORDER BY a.applied_at DESC, a.application_id DESC";
+        String sql = SELECT_APPS + "WHERE a.student_id = ? ORDER BY a.applied_at DESC, a.application_id DESC";
         List<Application> list = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setInt(1, studentId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    list.add(map(rs));
+                    list.add(readApplication(rs));
                 }
             }
         }
         return list;
     }
 
-    /** All applications with a given status (e.g. SUBMITTED for the admin), oldest first. */
+    // e.g. all SUBMITTED applications for the admin, oldest first
     public List<Application> findByStatus(Connection con, String status) throws SQLException {
-        String sql = SELECT_JOIN + "WHERE a.status = ? ORDER BY a.applied_at, a.application_id";
+        String sql = SELECT_APPS + "WHERE a.status = ? ORDER BY a.applied_at, a.application_id";
         List<Application> list = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setString(1, status);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    list.add(map(rs));
+                    list.add(readApplication(rs));
                 }
             }
         }
@@ -60,30 +55,34 @@ public class ApplicationDAO {
     }
 
     public Application findById(Connection con, int applicationId) throws SQLException {
-        String sql = SELECT_JOIN + "WHERE a.application_id = ?";
+        String sql = SELECT_APPS + "WHERE a.application_id = ?";
         try (PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setInt(1, applicationId);
             try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? map(rs) : null;
+                if (rs.next()) {
+                    return readApplication(rs);
+                }
+                return null;
             }
         }
     }
 
-    /**
-     * Locks the application row and returns its CURRENT status (or null if gone).
-     * Used inside the approval transaction to re-check that it is still SUBMITTED.
-     */
+    // Locks the application row and gives back its status right now.
+    // Used during approval to check it is still SUBMITTED.
     public String lockAndGetStatus(Connection con, int applicationId) throws SQLException {
         String sql = "SELECT status FROM pass_applications WHERE application_id = ? FOR UPDATE";
         try (PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setInt(1, applicationId);
             try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rs.getString("status") : null;
+                if (rs.next()) {
+                    return rs.getString("status");
+                }
+                return null;
             }
         }
     }
 
-    /** INSERT a new application (status DRAFT or SUBMITTED). Returns the new id. */
+    // new application, status is DRAFT or SUBMITTED. Returns the new id.
     public int insert(Connection con, Application a) throws SQLException {
         String sql = "INSERT INTO pass_applications (student_id, stop_id, valid_from, valid_to, status, remarks) "
                    + "VALUES (?, ?, ?, ?, ?, ?)";
@@ -102,7 +101,7 @@ public class ApplicationDAO {
         }
     }
 
-    /** Turns the student's own DRAFT into SUBMITTED. Returns rows changed (0 = not a draft). */
+    // DRAFT -> SUBMITTED. Returns 0 if it was not this student's draft.
     public int submitDraft(Connection con, int applicationId, int studentId) throws SQLException {
         String sql = "UPDATE pass_applications SET status = 'SUBMITTED', applied_at = NOW() "
                    + "WHERE application_id = ? AND student_id = ? AND status = 'DRAFT'";
@@ -113,7 +112,7 @@ public class ApplicationDAO {
         }
     }
 
-    /** DELETE is allowed ONLY for the student's own DRAFT. Returns rows deleted. */
+    // Students can only delete their own DRAFT. Returns 0 if nothing was deleted.
     public int deleteDraft(Connection con, int applicationId, int studentId) throws SQLException {
         String sql = "DELETE FROM pass_applications "
                    + "WHERE application_id = ? AND student_id = ? AND status = 'DRAFT'";
@@ -124,10 +123,8 @@ public class ApplicationDAO {
         }
     }
 
-    /**
-     * Admin decision: newStatus is APPROVED or REJECTED. The "AND status = 'SUBMITTED'"
-     * means an application can be decided only once. Returns rows changed.
-     */
+    // Admin decision, newStatus is APPROVED or REJECTED.
+    // "AND status = 'SUBMITTED'" means an application can only be decided once.
     public int review(Connection con, int applicationId, String newStatus, int adminUserId, String adminRemarks)
             throws SQLException {
         String sql = "UPDATE pass_applications "
@@ -142,10 +139,8 @@ public class ApplicationDAO {
         }
     }
 
-    /**
-     * How many SUBMITTED applications of this student overlap the dates
-     * (used to stop a student sending the same request twice).
-     */
+    // How many SUBMITTED applications this student has for overlapping dates.
+    // Two date ranges overlap when  from1 <= to2  AND  to1 >= from2.
     public int countSubmittedOverlap(Connection con, int studentId, LocalDate from, LocalDate to,
                                      int excludeApplicationId) throws SQLException {
         String sql = "SELECT COUNT(*) FROM pass_applications "
@@ -163,7 +158,7 @@ public class ApplicationDAO {
         }
     }
 
-    private Application map(ResultSet rs) throws SQLException {
+    private Application readApplication(ResultSet rs) throws SQLException {
         Application a = new Application();
         a.setApplicationId(rs.getInt("application_id"));
         a.setStudentId(rs.getInt("student_id"));
@@ -173,11 +168,20 @@ public class ApplicationDAO {
         a.setStatus(rs.getString("status"));
         a.setRemarks(rs.getString("remarks"));
         a.setAppliedAt(rs.getTimestamp("applied_at").toLocalDateTime());
+
+        // getInt gives 0 for NULL, so we check wasNull() to keep it as null
         int reviewer = rs.getInt("reviewed_by");
-        a.setReviewedBy(rs.wasNull() ? null : reviewer);     // keep NULL as null
+        if (rs.wasNull()) {
+            a.setReviewedBy(null);
+        } else {
+            a.setReviewedBy(reviewer);
+        }
         Timestamp reviewedAt = rs.getTimestamp("reviewed_at");
-        a.setReviewedAt(reviewedAt == null ? null : reviewedAt.toLocalDateTime());
+        if (reviewedAt != null) {
+            a.setReviewedAt(reviewedAt.toLocalDateTime());
+        }
         a.setAdminRemarks(rs.getString("admin_remarks"));
+
         a.setStudentName(rs.getString("full_name"));
         a.setRollNo(rs.getString("roll_no"));
         a.setStopName(rs.getString("stop_name"));

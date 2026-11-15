@@ -9,20 +9,33 @@ import java.util.List;
 
 import com.campusride.model.Bus;
 
-/** SQL for the buses table. */
+// SQL for the buses table
 public class BusDAO {
 
     public List<Bus> findAll(Connection con) throws SQLException {
         String sql = "SELECT bus_id, reg_no, capacity FROM buses ORDER BY reg_no";
-        return query(con, sql);
+        List<Bus> list = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                list.add(readBus(rs));
+            }
+        }
+        return list;
     }
 
-    /** Buses not yet assigned to any route (a bus may serve only one route). */
+    // buses that no route is using yet (a bus can only be on one route)
     public List<Bus> findUnassigned(Connection con) throws SQLException {
-        String sql = "SELECT b.bus_id, b.reg_no, b.capacity FROM buses b "
-                   + "WHERE NOT EXISTS (SELECT 1 FROM routes r WHERE r.bus_id = b.bus_id) "
-                   + "ORDER BY b.reg_no";
-        return query(con, sql);
+        String sql = "SELECT bus_id, reg_no, capacity FROM buses "
+                   + "WHERE bus_id NOT IN (SELECT bus_id FROM routes) ORDER BY reg_no";
+        List<Bus> list = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                list.add(readBus(rs));
+            }
+        }
+        return list;
     }
 
     public void insert(Connection con, String regNo, int capacity) throws SQLException {
@@ -43,14 +56,10 @@ public class BusDAO {
         }
     }
 
-    /**
-     * Deletes a bus only if no route uses it. The NOT EXISTS makes the rule
-     * visible in the SQL; the foreign key would also refuse it (error 1451).
-     * Returns the number of rows deleted (0 means the bus is in use).
-     */
+    // only deletes the bus if no route uses it. Returns 0 if it was not deleted.
     public int deleteIfUnused(Connection con, int busId) throws SQLException {
         String sql = "DELETE FROM buses WHERE bus_id = ? "
-                   + "AND NOT EXISTS (SELECT 1 FROM routes r WHERE r.bus_id = ?)";
+                   + "AND NOT EXISTS (SELECT 1 FROM routes WHERE routes.bus_id = ?)";
         try (PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setInt(1, busId);
             ps.setInt(2, busId);
@@ -58,18 +67,11 @@ public class BusDAO {
         }
     }
 
-    private List<Bus> query(Connection con, String sql) throws SQLException {
-        List<Bus> list = new ArrayList<>();
-        try (PreparedStatement ps = con.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                Bus b = new Bus();
-                b.setBusId(rs.getInt("bus_id"));
-                b.setRegNo(rs.getString("reg_no"));
-                b.setCapacity(rs.getInt("capacity"));
-                list.add(b);
-            }
-        }
-        return list;
+    private Bus readBus(ResultSet rs) throws SQLException {
+        Bus b = new Bus();
+        b.setBusId(rs.getInt("bus_id"));
+        b.setRegNo(rs.getString("reg_no"));
+        b.setCapacity(rs.getInt("capacity"));
+        return b;
     }
 }
