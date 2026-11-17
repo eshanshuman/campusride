@@ -7,8 +7,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Vector;
 
 import com.campusride.model.BusPass;
 
@@ -29,37 +28,45 @@ public class PassDAO {
     // how many ACTIVE passes on this route overlap the given dates (= seats used)
     public int countActiveOverlapOnRoute(Connection con, int routeId, LocalDate from, LocalDate to)
             throws SQLException {
-        String sql = "SELECT COUNT(*) FROM bus_passes p "
-                   + "JOIN pass_applications a ON a.application_id = p.application_id "
-                   + "JOIN route_stops st ON st.stop_id = a.stop_id "
-                   + "WHERE st.route_id = ? AND p.status = 'ACTIVE' "
-                   + "AND p.valid_from <= ? AND p.valid_to >= ?";
-        try (PreparedStatement ps = con.prepareStatement(sql)) {
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try {
+            ps = con.prepareStatement("SELECT COUNT(*) FROM bus_passes p "
+                    + "JOIN pass_applications a ON a.application_id = p.application_id "
+                    + "JOIN route_stops st ON st.stop_id = a.stop_id "
+                    + "WHERE st.route_id = ? AND p.status = 'ACTIVE' "
+                    + "AND p.valid_from <= ? AND p.valid_to >= ?");
             ps.setInt(1, routeId);
             ps.setDate(2, Date.valueOf(to));
             ps.setDate(3, Date.valueOf(from));
-            try (ResultSet rs = ps.executeQuery()) {
-                rs.next();
-                return rs.getInt(1);
-            }
+            rs = ps.executeQuery();
+            rs.next();
+            return rs.getInt(1);
+        } finally {
+            if (rs != null) rs.close();
+            if (ps != null) ps.close();
         }
     }
 
     // how many ACTIVE passes this student has that overlap the given dates
     public int countActiveOverlapForStudent(Connection con, int studentId, LocalDate from, LocalDate to)
             throws SQLException {
-        String sql = "SELECT COUNT(*) FROM bus_passes p "
-                   + "JOIN pass_applications a ON a.application_id = p.application_id "
-                   + "WHERE a.student_id = ? AND p.status = 'ACTIVE' "
-                   + "AND p.valid_from <= ? AND p.valid_to >= ?";
-        try (PreparedStatement ps = con.prepareStatement(sql)) {
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try {
+            ps = con.prepareStatement("SELECT COUNT(*) FROM bus_passes p "
+                    + "JOIN pass_applications a ON a.application_id = p.application_id "
+                    + "WHERE a.student_id = ? AND p.status = 'ACTIVE' "
+                    + "AND p.valid_from <= ? AND p.valid_to >= ?");
             ps.setInt(1, studentId);
             ps.setDate(2, Date.valueOf(to));
             ps.setDate(3, Date.valueOf(from));
-            try (ResultSet rs = ps.executeQuery()) {
-                rs.next();
-                return rs.getInt(1);
-            }
+            rs = ps.executeQuery();
+            rs.next();
+            return rs.getInt(1);
+        } finally {
+            if (rs != null) rs.close();
+            if (ps != null) ps.close();
         }
     }
 
@@ -67,84 +74,108 @@ public class PassDAO {
     // If two admins get the same number at the same time, the UNIQUE key on pass_no stops the second one.
     public String nextPassNo(Connection con, int year) throws SQLException {
         String prefix = "CR-" + year + "-";
-        // SUBSTRING(pass_no, 9) = the 5 digits after "CR-2026-"
-        String sql = "SELECT MAX(CAST(SUBSTRING(pass_no, 9) AS UNSIGNED)) FROM bus_passes WHERE pass_no LIKE ?";
-        try (PreparedStatement ps = con.prepareStatement(sql)) {
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try {
+            // SUBSTRING(pass_no, 9) = the 5 digits after "CR-2026-"
+            ps = con.prepareStatement("SELECT MAX(CAST(SUBSTRING(pass_no, 9) AS UNSIGNED)) "
+                    + "FROM bus_passes WHERE pass_no LIKE ?");
             ps.setString(1, prefix + "%");
-            try (ResultSet rs = ps.executeQuery()) {
-                rs.next();
-                int biggest = rs.getInt(1);      // NULL (no passes this year yet) comes back as 0
-                int nextNumber = biggest + 1;
-                return prefix + String.format("%05d", nextNumber);   // 3 -> "00003"
-            }
+            rs = ps.executeQuery();
+            rs.next();
+            int biggest = rs.getInt(1);      // NULL (no passes this year yet) comes back as 0
+            int nextNumber = biggest + 1;
+            return prefix + String.format("%05d", nextNumber);   // 3 -> "00003"
+        } finally {
+            if (rs != null) rs.close();
+            if (ps != null) ps.close();
         }
     }
 
     // new ACTIVE pass, returns the new pass_id
     public int insert(Connection con, int applicationId, String passNo, LocalDate from, LocalDate to)
             throws SQLException {
-        String sql = "INSERT INTO bus_passes (application_id, pass_no, valid_from, valid_to, status) "
-                   + "VALUES (?, ?, ?, ?, 'ACTIVE')";
-        try (PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        PreparedStatement ps = null;
+        ResultSet keys = null;
+        try {
+            ps = con.prepareStatement("INSERT INTO bus_passes (application_id, pass_no, valid_from, valid_to, status) "
+                    + "VALUES (?, ?, ?, ?, 'ACTIVE')", Statement.RETURN_GENERATED_KEYS);
             ps.setInt(1, applicationId);
             ps.setString(2, passNo);
             ps.setDate(3, Date.valueOf(from));
             ps.setDate(4, Date.valueOf(to));
             ps.executeUpdate();
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                keys.next();
-                return keys.getInt(1);
-            }
+            keys = ps.getGeneratedKeys();
+            keys.next();
+            return keys.getInt(1);
+        } finally {
+            if (keys != null) keys.close();
+            if (ps != null) ps.close();
         }
     }
 
     // all passes of one student, newest first
-    public List<BusPass> findByStudent(Connection con, int studentId) throws SQLException {
-        String sql = SELECT_PASSES + "WHERE a.student_id = ? ORDER BY p.issued_at DESC";
-        List<BusPass> list = new ArrayList<>();
-        try (PreparedStatement ps = con.prepareStatement(sql)) {
+    public Vector<BusPass> findByStudent(Connection con, int studentId) throws SQLException {
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        Vector<BusPass> list = new Vector<BusPass>();
+        try {
+            ps = con.prepareStatement(SELECT_PASSES + "WHERE a.student_id = ? ORDER BY p.issued_at DESC");
             ps.setInt(1, studentId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    list.add(readPass(rs));
-                }
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                list.add(readPass(rs));
             }
+        } finally {
+            if (rs != null) rs.close();
+            if (ps != null) ps.close();
         }
         return list;
     }
 
     // Passenger list of a route: ACTIVE passes that haven't ended yet,
     // sorted by stop so the driver can read it from the first stop.
-    public List<BusPass> findPassengers(Connection con, int routeId) throws SQLException {
-        String sql = SELECT_PASSES
-                   + "WHERE st.route_id = ? AND p.status = 'ACTIVE' AND p.valid_to >= CURDATE() "
-                   + "ORDER BY st.stop_seq, s.full_name";
-        List<BusPass> list = new ArrayList<>();
-        try (PreparedStatement ps = con.prepareStatement(sql)) {
+    public Vector<BusPass> findPassengers(Connection con, int routeId) throws SQLException {
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        Vector<BusPass> list = new Vector<BusPass>();
+        try {
+            ps = con.prepareStatement(SELECT_PASSES
+                    + "WHERE st.route_id = ? AND p.status = 'ACTIVE' AND p.valid_to >= CURDATE() "
+                    + "ORDER BY st.stop_seq, s.full_name");
             ps.setInt(1, routeId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    list.add(readPass(rs));
-                }
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                list.add(readPass(rs));
             }
+        } finally {
+            if (rs != null) rs.close();
+            if (ps != null) ps.close();
         }
         return list;
     }
 
     // ACTIVE -> CANCELLED, which frees the seat. We never delete passes.
     public int cancel(Connection con, int passId) throws SQLException {
-        String sql = "UPDATE bus_passes SET status = 'CANCELLED' WHERE pass_id = ? AND status = 'ACTIVE'";
-        try (PreparedStatement ps = con.prepareStatement(sql)) {
+        PreparedStatement ps = null;
+        try {
+            ps = con.prepareStatement("UPDATE bus_passes SET status = 'CANCELLED' WHERE pass_id = ? AND status = 'ACTIVE'");
             ps.setInt(1, passId);
             return ps.executeUpdate();
+        } finally {
+            if (ps != null) ps.close();
         }
     }
 
     // passes whose end date has passed become EXPIRED
     public int expireOldPasses(Connection con) throws SQLException {
-        String sql = "UPDATE bus_passes SET status = 'EXPIRED' WHERE status = 'ACTIVE' AND valid_to < CURDATE()";
-        try (PreparedStatement ps = con.prepareStatement(sql)) {
+        PreparedStatement ps = null;
+        try {
+            ps = con.prepareStatement("UPDATE bus_passes SET status = 'EXPIRED' "
+                    + "WHERE status = 'ACTIVE' AND valid_to < CURDATE()");
             return ps.executeUpdate();
+        } finally {
+            if (ps != null) ps.close();
         }
     }
 
