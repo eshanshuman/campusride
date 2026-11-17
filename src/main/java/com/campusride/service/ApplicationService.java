@@ -3,7 +3,7 @@ package com.campusride.service;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDate;
-import java.util.List;
+import java.util.Vector;
 
 import com.campusride.dao.ApplicationDAO;
 import com.campusride.dao.PassDAO;
@@ -42,7 +42,9 @@ public class ApplicationService {
             throw new ServiceException("Remarks must be at most 255 characters.");
         }
 
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             if (submitNow) {
                 checkCanSubmit(con, studentId, stopId, from, to, 0);
             } else if (stopDAO.findById(con, stopId) == null) {
@@ -63,13 +65,17 @@ public class ApplicationService {
             return appDAO.insert(con, a);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
     // DRAFT -> SUBMITTED, with the same checks as a new application
     public void submitDraft(int applicationId) throws ServiceException {
         int studentId = StudentService.currentStudentId();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             Application a = appDAO.findById(con, applicationId);
             if (a == null || a.getStudentId() != studentId) {
                 throw new ServiceException("Application not found.");
@@ -85,38 +91,52 @@ public class ApplicationService {
             }
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
     // only DRAFTs can be deleted, submitted/decided ones are kept as a record
     public void deleteDraft(int applicationId) throws ServiceException {
         int studentId = StudentService.currentStudentId();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             int rows = appDAO.deleteDraft(con, applicationId, studentId);
             if (rows != 1) {
                 throw new ServiceException("Only your own DRAFT applications can be deleted.");
             }
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
-    public List<Application> getMyApplications() throws ServiceException {
+    public Vector<Application> getMyApplications() throws ServiceException {
         int studentId = StudentService.currentStudentId();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             return appDAO.findByStudent(con, studentId);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
-    public List<BusPass> getMyPasses() throws ServiceException {
+    public Vector<BusPass> getMyPasses() throws ServiceException {
         int studentId = StudentService.currentStudentId();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             passDAO.expireOldPasses(con);   // so old passes show as EXPIRED
             return passDAO.findByStudent(con, studentId);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 

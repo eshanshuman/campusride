@@ -14,12 +14,16 @@ public class StudentService {
     private StudentDAO studentDAO = new StudentDAO();
 
     public Student getMyProfile() throws ServiceException {
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             Student s = studentDAO.findById(con, currentStudentId());
             Session.setStudent(s);
             return s;
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
@@ -35,11 +39,15 @@ public class StudentService {
         s.setPhone(Validation.phone(phone));
         s.setEmail(Validation.email(email));
 
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             studentDAO.update(con, s);
             Session.setStudent(studentDAO.findById(con, s.getStudentId()));
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 

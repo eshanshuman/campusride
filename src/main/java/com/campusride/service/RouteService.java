@@ -3,7 +3,7 @@ package com.campusride.service;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDate;
-import java.util.List;
+import java.util.Vector;
 
 import com.campusride.dao.PassDAO;
 import com.campusride.dao.RouteDAO;
@@ -19,19 +19,27 @@ public class RouteService {
     private StopDAO stopDAO = new StopDAO();
     private PassDAO passDAO = new PassDAO();
 
-    public List<Route> getActiveRoutes() throws ServiceException {
-        try (Connection con = DBConnection.getConnection()) {
+    public Vector<Route> getActiveRoutes() throws ServiceException {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             return routeDAO.findActive(con);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
-    public List<Stop> getStops(int routeId) throws ServiceException {
-        try (Connection con = DBConnection.getConnection()) {
+    public Vector<Stop> getStops(int routeId) throws ServiceException {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             return stopDAO.findByRoute(con, routeId);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
@@ -39,7 +47,9 @@ public class RouteService {
     // We count every overlapping pass, which is simple and can never overbook the bus.
     public int getSeatsLeft(int routeId, LocalDate from, LocalDate to) throws ServiceException {
         Validation.dateRange(from, to);
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             Route route = routeDAO.findById(con, routeId);
             if (route == null) {
                 throw new ServiceException("This route no longer exists.");
@@ -52,6 +62,8 @@ public class RouteService {
             return seatsLeft;
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 }

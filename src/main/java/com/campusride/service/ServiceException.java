@@ -52,6 +52,9 @@ public class ServiceException extends Exception {
                 return new ServiceException("Cannot connect to the database. Is MySQL running and is db.properties correct?");
             default:
                 // SQL state 08... means a connection problem; our own db.properties message has error code 0
+                if (msg.contains("JDBC driver not found")) {
+                    return new ServiceException(msg);   // our own message from DBConnection
+                }
                 String state = e.getSQLState();
                 if ((state != null && state.startsWith("08")) || msg.contains("db.properties")) {
                     return new ServiceException("Cannot connect to the database. Is MySQL running and is db.properties correct?");

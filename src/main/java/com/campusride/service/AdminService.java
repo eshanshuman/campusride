@@ -5,7 +5,7 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
-import java.util.List;
+import java.util.Vector;
 
 import com.campusride.dao.ApplicationDAO;
 import com.campusride.dao.BusDAO;
@@ -34,20 +34,26 @@ public class AdminService {
 
     // ---------- Approvals ----------
 
-    public List<Application> getPendingApplications() throws ServiceException {
+    public Vector<Application> getPendingApplications() throws ServiceException {
         checkAdmin();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             passDAO.expireOldPasses(con);
             return appDAO.findByStatus(con, "SUBMITTED");
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
     // numbers for the "Capacity check" box
     public CapacityInfo getCapacityInfo(Application app) throws ServiceException {
         checkAdmin();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             Route route = routeDAO.findById(con, app.getRouteId());
             if (route == null) {
                 throw new ServiceException("The route of this application no longer exists.");
@@ -58,6 +64,8 @@ public class AdminService {
             return new CapacityInfo(route.getRouteName(), route.getBusRegNo(), route.getCapacity(), seatsUsed, studentHasPass);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
@@ -68,67 +76,68 @@ public class AdminService {
         int adminUserId = Session.getUser().getUserId();
         String remarks = cleanRemarks(adminRemarks);
 
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             // READ COMMITTED: after we get the locks, our COUNT queries see passes
             // that another admin committed just a moment ago
             con.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
             // 1. start the transaction
             con.setAutoCommit(false);
-            try {
-                Application app = appDAO.findById(con, applicationId);
-                if (app == null) {
-                    throw new ServiceException("Application not found.");
-                }
 
-                // 2. lock the route so two admins can't take the same seat
-                Route route = routeDAO.findByIdForUpdate(con, app.getRouteId());
-                if (route == null) {
-                    throw new ServiceException("The route of this application no longer exists.");
-                }
-                // 3. lock the student so they can't get two passes at the same time
-                studentDAO.lockById(con, app.getStudentId());
-
-                // 4. check everything again now that we hold the locks
-                String status = appDAO.lockAndGetStatus(con, applicationId);
-                if (!"SUBMITTED".equals(status)) {
-                    throw new ServiceException("This application is already " + status + ".");
-                }
-                if (!route.isActive()) {
-                    throw new ServiceException(route.getRouteName() + " is not active. Activate it or reject the application.");
-                }
-                LocalDate from = app.getValidFrom();
-                LocalDate to = app.getValidTo();
-                if (passDAO.countActiveOverlapForStudent(con, app.getStudentId(), from, to) > 0) {
-                    throw new ServiceException(app.getStudentName() + " already has an ACTIVE pass overlapping these dates.");
-                }
-                int seatsUsed = passDAO.countActiveOverlapOnRoute(con, route.getRouteId(), from, to);
-                if (seatsUsed >= route.getCapacity()) {
-                    throw new ServiceException("Bus " + route.getBusRegNo() + " is full for this period ("
-                            + seatsUsed + " of " + route.getCapacity() + " seats taken). Cannot approve.");
-                }
-
-                // 5. mark the application APPROVED
-                int rows = appDAO.review(con, applicationId, "APPROVED", adminUserId, remarks);
-                if (rows != 1) {
-                    throw new ServiceException("This application was changed by someone else. Please refresh.");
-                }
-
-                // 6. issue the pass
-                String passNo = passDAO.nextPassNo(con, LocalDate.now().getYear());
-                passDAO.insert(con, applicationId, passNo, from, to);
-
-                // 7. save everything
-                con.commit();
-                return passNo;
-            } catch (ServiceException e) {
-                con.rollback();   // undo the update/insert and release the locks
-                throw e;
-            } catch (SQLException e) {
-                con.rollback();
-                throw e;
+            Application app = appDAO.findById(con, applicationId);
+            if (app == null) {
+                throw new ServiceException("Application not found.");
             }
+
+            // 2. lock the route so two admins can't take the same seat
+            Route route = routeDAO.findByIdForUpdate(con, app.getRouteId());
+            if (route == null) {
+                throw new ServiceException("The route of this application no longer exists.");
+            }
+            // 3. lock the student so they can't get two passes at the same time
+            studentDAO.lockById(con, app.getStudentId());
+
+            // 4. check everything again now that we hold the locks
+            String status = appDAO.lockAndGetStatus(con, applicationId);
+            if (!"SUBMITTED".equals(status)) {
+                throw new ServiceException("This application is already " + status + ".");
+            }
+            if (!route.isActive()) {
+                throw new ServiceException(route.getRouteName() + " is not active. Activate it or reject the application.");
+            }
+            LocalDate from = app.getValidFrom();
+            LocalDate to = app.getValidTo();
+            if (passDAO.countActiveOverlapForStudent(con, app.getStudentId(), from, to) > 0) {
+                throw new ServiceException(app.getStudentName() + " already has an ACTIVE pass overlapping these dates.");
+            }
+            int seatsUsed = passDAO.countActiveOverlapOnRoute(con, route.getRouteId(), from, to);
+            if (seatsUsed >= route.getCapacity()) {
+                throw new ServiceException("Bus " + route.getBusRegNo() + " is full for this period ("
+                        + seatsUsed + " of " + route.getCapacity() + " seats taken). Cannot approve.");
+            }
+
+            // 5. mark the application APPROVED
+            int rows = appDAO.review(con, applicationId, "APPROVED", adminUserId, remarks);
+            if (rows != 1) {
+                throw new ServiceException("This application was changed by someone else. Please refresh.");
+            }
+
+            // 6. issue the pass
+            String passNo = passDAO.nextPassNo(con, LocalDate.now().getYear());
+            passDAO.insert(con, applicationId, passNo, from, to);
+
+            // 7. save everything
+            con.commit();
+            return passNo;
+        } catch (ServiceException e) {
+            rollback(con);   // undo the update/insert and release the locks
+            throw e;
         } catch (SQLException e) {
+            rollback(con);
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
@@ -136,67 +145,91 @@ public class AdminService {
     public void reject(int applicationId, String adminRemarks) throws ServiceException {
         checkAdmin();
         String remarks = Validation.required(adminRemarks, "Reason for rejection", 255);
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             int rows = appDAO.review(con, applicationId, "REJECTED", Session.getUser().getUserId(), remarks);
             if (rows != 1) {
                 throw new ServiceException("This application is no longer waiting for a decision. Please refresh.");
             }
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
     // ---------- Passenger lists ----------
 
-    public List<Route> getAllRoutes() throws ServiceException {
+    public Vector<Route> getAllRoutes() throws ServiceException {
         checkAdmin();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             return routeDAO.findAll(con);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
-    public List<BusPass> getPassengers(int routeId) throws ServiceException {
+    public Vector<BusPass> getPassengers(int routeId) throws ServiceException {
         checkAdmin();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             passDAO.expireOldPasses(con);
             return passDAO.findPassengers(con, routeId);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
     // cancelling frees the seat; passes are never deleted
     public void cancelPass(int passId) throws ServiceException {
         checkAdmin();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             int rows = passDAO.cancel(con, passId);
             if (rows != 1) {
                 throw new ServiceException("Only ACTIVE passes can be cancelled.");
             }
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
     // ---------- Buses, routes and stops ----------
 
-    public List<Bus> getAllBuses() throws ServiceException {
+    public Vector<Bus> getAllBuses() throws ServiceException {
         checkAdmin();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             return busDAO.findAll(con);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
-    public List<Bus> getUnassignedBuses() throws ServiceException {
+    public Vector<Bus> getUnassignedBuses() throws ServiceException {
         checkAdmin();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             return busDAO.findUnassigned(con);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
@@ -204,10 +237,14 @@ public class AdminService {
         checkAdmin();
         String reg = Validation.required(regNo, "Registration number", 15).toUpperCase();
         int capacity = readPositiveNumber(capacityText, "Capacity");
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             busDAO.insert(con, reg, capacity);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
@@ -215,9 +252,12 @@ public class AdminService {
     public void changeCapacity(int busId, String capacityText) throws ServiceException {
         checkAdmin();
         int capacity = readPositiveNumber(capacityText, "Capacity");
-        try (Connection con = DBConnection.getConnection()) {
-            List<Route> routes = routeDAO.findAll(con);
-            for (Route r : routes) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
+            Vector<Route> routes = routeDAO.findAll(con);
+            for (int i = 0; i < routes.size(); i++) {
+                Route r = routes.get(i);
                 if (r.getBusId() == busId) {
                     int passengers = passDAO.findPassengers(con, r.getRouteId()).size();
                     if (capacity < passengers) {
@@ -229,18 +269,24 @@ public class AdminService {
             busDAO.updateCapacity(con, busId, capacity);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
     public void deleteBus(int busId) throws ServiceException {
         checkAdmin();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             int rows = busDAO.deleteIfUnused(con, busId);
             if (rows != 1) {
                 throw new ServiceException("This bus is assigned to a route, so it cannot be deleted.");
             }
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
@@ -250,25 +296,35 @@ public class AdminService {
         if (bus == null) {
             throw new ServiceException("Please choose a free bus for the route (add a bus first if none is free).");
         }
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             routeDAO.insert(con, name, bus.getBusId());
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
     public void setRouteActive(int routeId, boolean active) throws ServiceException {
         checkAdmin();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             routeDAO.setActive(con, routeId, active);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
     public void deleteRoute(int routeId) throws ServiceException {
         checkAdmin();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             int rows = routeDAO.deleteIfUnused(con, routeId);
             if (rows != 1) {
                 throw new ServiceException("This route still has stops. Delete its stops first "
@@ -276,15 +332,21 @@ public class AdminService {
             }
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
-    public List<Stop> getStops(int routeId) throws ServiceException {
+    public Vector<Stop> getStops(int routeId) throws ServiceException {
         checkAdmin();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             return stopDAO.findByRoute(con, routeId);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
@@ -302,22 +364,30 @@ public class AdminService {
         } catch (DateTimeParseException e) {
             throw new ServiceException("Pickup time must look like 07:45 (24-hour clock).");
         }
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             stopDAO.insert(con, route.getRouteId(), name, seq, time);
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
     public void deleteStop(int stopId) throws ServiceException {
         checkAdmin();
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             int rows = stopDAO.deleteIfUnused(con, stopId);
             if (rows != 1) {
                 throw new ServiceException("Students have applied for this stop, so it cannot be deleted.");
             }
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
@@ -326,6 +396,17 @@ public class AdminService {
     private void checkAdmin() throws ServiceException {
         if (Session.getUser() == null || !Session.getUser().isAdmin()) {
             throw new ServiceException("Only the transport admin can do this.");
+        }
+    }
+
+    // undo the transaction (if the connection was opened)
+    private void rollback(Connection con) {
+        if (con != null) {
+            try {
+                con.rollback();
+            } catch (SQLException e) {
+                System.out.println("Rollback failed: " + e.getMessage());
+            }
         }
     }
 

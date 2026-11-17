@@ -22,7 +22,9 @@ public class AuthService {
         if (username == null || username.trim().isEmpty() || password == null || password.length == 0) {
             throw new ServiceException("Please enter your username and password.");
         }
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             User user = userDAO.findByUsername(con, username.trim());
             // same message for "no such user" and "wrong password",
             // so nobody can find out which usernames exist
@@ -37,6 +39,8 @@ public class AuthService {
             return user;
         } catch (SQLException e) {
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
@@ -58,40 +62,52 @@ public class AuthService {
         s.setEmail(Validation.email(s.getEmail()));
 
         // 2. save both rows in one transaction
-        try (Connection con = DBConnection.getConnection()) {
+        Connection con = null;
+        try {
+            con = DBConnection.getConnection();
             con.setAutoCommit(false);
-            try {
-                // check first so the user gets a nice message (the UNIQUE keys are the real guard)
-                if (userDAO.usernameExists(con, cleanUsername)) {
-                    throw new ServiceException("That username is already taken. Please choose another.");
-                }
-                if (studentDAO.rollNoExists(con, s.getRollNo(), 0)) {
-                    throw new ServiceException("That roll number is already registered.");
-                }
 
-                User u = new User();
-                u.setUsername(cleanUsername);
-                u.setRole("STUDENT");
-                u.setPasswordSalt(PasswordUtil.newSalt());
-                u.setPasswordHash(PasswordUtil.hash(password, u.getPasswordSalt()));
-                int newUserId = userDAO.insert(con, u);
-
-                s.setUserId(newUserId);
-                studentDAO.insert(con, s);
-                con.commit();
-            } catch (ServiceException e) {
-                con.rollback();
-                throw e;
-            } catch (SQLException e) {
-                con.rollback();
-                throw e;
+            // check first so the user gets a nice message (the UNIQUE keys are the real guard)
+            if (userDAO.usernameExists(con, cleanUsername)) {
+                throw new ServiceException("That username is already taken. Please choose another.");
             }
+            if (studentDAO.rollNoExists(con, s.getRollNo(), 0)) {
+                throw new ServiceException("That roll number is already registered.");
+            }
+
+            User u = new User();
+            u.setUsername(cleanUsername);
+            u.setRole("STUDENT");
+            u.setPasswordSalt(PasswordUtil.newSalt());
+            u.setPasswordHash(PasswordUtil.hash(password, u.getPasswordSalt()));
+            int newUserId = userDAO.insert(con, u);
+
+            s.setUserId(newUserId);
+            studentDAO.insert(con, s);
+            con.commit();
+        } catch (ServiceException e) {
+            rollback(con);
+            throw e;
         } catch (SQLException e) {
+            rollback(con);
             throw ServiceException.fromSql(e);
+        } finally {
+            DBConnection.close(con);
         }
     }
 
     public void logout() {
         Session.logout();
+    }
+
+    // undo the transaction (if the connection was opened)
+    private void rollback(Connection con) {
+        if (con != null) {
+            try {
+                con.rollback();
+            } catch (SQLException e) {
+                System.out.println("Rollback failed: " + e.getMessage());
+            }
+        }
     }
 }
