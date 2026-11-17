@@ -9,7 +9,10 @@ import java.util.Base64;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 
-// Password hashing with PBKDF2 (it is built into Java, no extra library).
+// PBKDF2 in simple words: it mixes the password with a random "salt" and runs a hash function
+// (HMAC-SHA256) on it again and again, 65536 times. The result can't be turned back into the password,
+// and the many rounds make it very slow for someone to try millions of guesses.
+// It is built into Java (javax.crypto), so we need no extra library.
 // We never store the real password, only the hash and the salt.
 public class PasswordUtil {
 
