@@ -6,10 +6,12 @@ import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
-import java.util.ArrayList;
-import java.util.List;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.util.Vector;
 
 import javax.swing.BorderFactory;
+import javax.swing.DefaultComboBoxModel;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
@@ -21,6 +23,10 @@ import javax.swing.JTabbedPane;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
 import javax.swing.table.DefaultTableModel;
 
 import com.campusride.model.Application;
@@ -38,16 +44,17 @@ import com.campusride.util.Session;
 //   1. Approvals       - SUBMITTED applications, capacity check, approve / reject
 //   2. Routes & Buses  - add and delete buses, routes and stops
 //   3. Passenger Lists - who travels on each route
-public class AdminDashboard extends JFrame {
+public class AdminDashboard extends JFrame implements ActionListener {
 
     private AdminService adminService = new AdminService();
     private JTabbedPane tabs = new JTabbedPane();
+    private JButton logoutBtn = UiUtil.secondaryButton("Logout");
 
     // ----- Approvals tab -----
-    private DefaultTableModel pendingModel = UiUtil.readOnlyModel(
-            "ID", "Student", "Roll no", "Route", "Stop", "From", "To", "Applied on", "Student remarks");
+    private DefaultTableModel pendingModel = UiUtil.readOnlyModel(new String[] {
+            "ID", "Student", "Roll no", "Route", "Stop", "From", "To", "Applied on", "Student remarks"});
     private JTable pendingTable = UiUtil.table(pendingModel);
-    private List<Application> pending = new ArrayList<>();
+    private Vector<Application> pending = new Vector<Application>();
     private JLabel capRoute = new JLabel("-");
     private JLabel capCapacity = new JLabel("-");
     private JLabel capSeatsUsed = new JLabel("-");
@@ -55,34 +62,47 @@ public class AdminDashboard extends JFrame {
     private JLabel capStudentHasPass = new JLabel("-");
     private JLabel capResult = new JLabel("Select an application.");
     private JTextArea adminRemarks = new JTextArea(3, 22);
+    private JButton refreshPendingBtn = UiUtil.secondaryButton("Refresh");
+    private JButton rejectBtn = UiUtil.secondaryButton("Reject");
+    private JButton approveBtn = UiUtil.primaryButton("Approve & issue pass");
 
     // ----- Routes & Buses tab -----
-    private DefaultTableModel busModel = UiUtil.readOnlyModel("Reg no", "Capacity");
+    private DefaultTableModel busModel = UiUtil.readOnlyModel(new String[] {"Reg no", "Capacity"});
     private JTable busTable = UiUtil.table(busModel);
-    private List<Bus> buses = new ArrayList<>();
+    private Vector<Bus> buses = new Vector<Bus>();
     private JTextField newBusReg = new JTextField(10);
     private JTextField newBusCapacity = new JTextField(4);
+    private JButton addBusBtn = UiUtil.primaryButton("Add bus");
+    private JButton setCapacityBtn = UiUtil.secondaryButton("Set capacity");
+    private JButton deleteBusBtn = UiUtil.secondaryButton("Delete");
 
-    private DefaultTableModel routeModel = UiUtil.readOnlyModel("Route", "Bus", "Seats", "Active");
+    private DefaultTableModel routeModel = UiUtil.readOnlyModel(new String[] {"Route", "Bus", "Seats", "Active"});
     private JTable routeTable = UiUtil.table(routeModel);
-    private List<Route> routes = new ArrayList<>();
+    private Vector<Route> routes = new Vector<Route>();
     private JTextField newRouteName = new JTextField(12);
-    private JComboBox<Bus> freeBusBox = new JComboBox<>();
+    private JComboBox<Bus> freeBusBox = new JComboBox<Bus>();
+    private JButton addRouteBtn = UiUtil.primaryButton("Add route");
+    private JButton toggleRouteBtn = UiUtil.secondaryButton("Active on/off");
+    private JButton deleteRouteBtn = UiUtil.secondaryButton("Delete");
 
-    private DefaultTableModel stopModel = UiUtil.readOnlyModel("#", "Stop", "Pickup");
+    private DefaultTableModel stopModel = UiUtil.readOnlyModel(new String[] {"#", "Stop", "Pickup"});
     private JTable stopTable = UiUtil.table(stopModel);
-    private List<Stop> stops = new ArrayList<>();
+    private Vector<Stop> stops = new Vector<Stop>();
     private JTextField newStopName = new JTextField(12);
     private JTextField newStopSeq = new JTextField(3);
     private JTextField newStopTime = new JTextField(5);
+    private JButton addStopBtn = UiUtil.primaryButton("Add stop");
+    private JButton deleteStopBtn = UiUtil.secondaryButton("Delete");
 
     // ----- Passenger Lists tab -----
-    private JComboBox<Route> passengerRouteBox = new JComboBox<>();
-    private DefaultTableModel passengerModel = UiUtil.readOnlyModel(
-            "Pass no", "Student", "Roll no", "Phone", "#", "Stop", "Pickup", "From", "To");
+    private JComboBox<Route> passengerRouteBox = new JComboBox<Route>();
+    private DefaultTableModel passengerModel = UiUtil.readOnlyModel(new String[] {
+            "Pass no", "Student", "Roll no", "Phone", "#", "Stop", "Pickup", "From", "To"});
     private JTable passengerTable = UiUtil.table(passengerModel);
-    private List<BusPass> passengers = new ArrayList<>();
+    private Vector<BusPass> passengers = new Vector<BusPass>();
     private JLabel passengerSummary = new JLabel(" ");
+    private JButton refreshPassengersBtn = UiUtil.secondaryButton("Refresh");
+    private JButton cancelPassBtn = UiUtil.secondaryButton("Cancel selected pass");
 
     public AdminDashboard() {
         super("CampusRide - Transport Admin");
@@ -92,12 +112,10 @@ public class AdminDashboard extends JFrame {
         JPanel header = UiUtil.header("CampusRide", "Transport office - approvals, routes and passenger lists");
         JLabel who = new JLabel("Logged in as " + Session.getUser().getUsername());
         who.setForeground(Color.WHITE);
-        JButton logout = UiUtil.secondaryButton("Logout");
-        logout.addActionListener(e -> logout());
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 6));
         right.setOpaque(false);
         right.add(who);
-        right.add(logout);
+        right.add(logoutBtn);
         header.add(right, BorderLayout.EAST);
         add(header, BorderLayout.NORTH);
 
@@ -106,21 +124,73 @@ public class AdminDashboard extends JFrame {
         tabs.addTab("Passenger Lists", buildPassengerTab());
 
         // reload a tab's data every time it is opened
-        tabs.addChangeListener(e -> {
-            int tab = tabs.getSelectedIndex();
-            if (tab == 0) {
-                loadPending();
-            } else if (tab == 1) {
-                loadBusesAndRoutes();
-            } else {
-                loadPassengerRoutes();
+        tabs.addChangeListener(new ChangeListener() {
+            public void stateChanged(ChangeEvent e) {
+                int tab = tabs.getSelectedIndex();
+                if (tab == 0) {
+                    loadPending();
+                } else if (tab == 1) {
+                    loadBusesAndRoutes();
+                } else {
+                    loadPassengerRoutes();
+                }
             }
         });
         add(tabs, BorderLayout.CENTER);
 
+        // every button (and the passenger route combo box) is handled in actionPerformed below
+        JButton[] allButtons = {logoutBtn, refreshPendingBtn, rejectBtn, approveBtn,
+                addBusBtn, setCapacityBtn, deleteBusBtn, addRouteBtn, toggleRouteBtn, deleteRouteBtn,
+                addStopBtn, deleteStopBtn, refreshPassengersBtn, cancelPassBtn};
+        for (int i = 0; i < allButtons.length; i++) {
+            allButtons[i].addActionListener(this);
+        }
+        passengerRouteBox.addActionListener(this);
+
         loadPending();
         setSize(1200, 720);
         setLocationRelativeTo(null);
+    }
+
+    public void actionPerformed(ActionEvent e) {
+        Object source = e.getSource();
+        if (source == logoutBtn) {
+            new AuthService().logout();
+            dispose();
+            new LoginFrame().setVisible(true);
+        }
+        // approvals tab
+        else if (source == refreshPendingBtn) {
+            loadPending();
+        } else if (source == approveBtn) {
+            approveSelected();
+        } else if (source == rejectBtn) {
+            rejectSelected();
+        }
+        // routes & buses tab
+        else if (source == addBusBtn) {
+            addBus();
+        } else if (source == setCapacityBtn) {
+            changeCapacity();
+        } else if (source == deleteBusBtn) {
+            deleteBus();
+        } else if (source == addRouteBtn) {
+            addRoute();
+        } else if (source == toggleRouteBtn) {
+            toggleRoute();
+        } else if (source == deleteRouteBtn) {
+            deleteRoute();
+        } else if (source == addStopBtn) {
+            addStop();
+        } else if (source == deleteStopBtn) {
+            deleteStop();
+        }
+        // passenger lists tab
+        else if (source == refreshPassengersBtn || source == passengerRouteBox) {
+            loadPassengers();
+        } else if (source == cancelPassBtn) {
+            cancelSelectedPass();
+        }
     }
 
     private void showError(String message) {
@@ -141,11 +211,9 @@ public class AdminDashboard extends JFrame {
         list.setLayout(new BorderLayout());
         pendingTable.getColumnModel().getColumn(0).setMaxWidth(40);   // ID column
         list.add(new JScrollPane(pendingTable), BorderLayout.CENTER);
-        JButton refresh = UiUtil.secondaryButton("Refresh");
-        refresh.addActionListener(e -> loadPending());
         JPanel listButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         listButtons.setOpaque(false);
-        listButtons.add(refresh);
+        listButtons.add(refreshPendingBtn);
         list.add(listButtons, BorderLayout.SOUTH);
         tab.add(list, BorderLayout.CENTER);
 
@@ -163,14 +231,10 @@ public class AdminDashboard extends JFrame {
         adminRemarks.setWrapStyleWord(true);
         UiUtil.addRow(cap, 6, "Admin remarks", new JScrollPane(adminRemarks));
 
-        JButton reject = UiUtil.secondaryButton("Reject");
-        reject.addActionListener(e -> rejectSelected());
-        JButton approve = UiUtil.primaryButton("Approve & issue pass");
-        approve.addActionListener(e -> approveSelected());
         JPanel decide = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         decide.setOpaque(false);
-        decide.add(reject);
-        decide.add(approve);
+        decide.add(rejectBtn);
+        decide.add(approveBtn);
         UiUtil.addWide(cap, 7, decide);
 
         JPanel capHolder = new JPanel(new BorderLayout());
@@ -179,9 +243,11 @@ public class AdminDashboard extends JFrame {
         tab.add(capHolder, BorderLayout.EAST);
 
         // when the admin clicks an application, fill the capacity box
-        pendingTable.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                showCapacity();
+        pendingTable.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
+            public void valueChanged(ListSelectionEvent e) {
+                if (!e.getValueIsAdjusting()) {
+                    showCapacity();
+                }
             }
         });
         return tab;
@@ -191,10 +257,19 @@ public class AdminDashboard extends JFrame {
         try {
             pending = adminService.getPendingApplications();
             pendingModel.setRowCount(0);
-            for (Application a : pending) {
-                pendingModel.addRow(new Object[] {a.getApplicationId(), a.getStudentName(), a.getRollNo(),
-                        a.getRouteName(), a.getStopName(), a.getValidFrom(), a.getValidTo(),
-                        a.getAppliedAt().toLocalDate(), a.getRemarks()});
+            for (int i = 0; i < pending.size(); i++) {
+                Application a = pending.get(i);
+                Vector<Object> row = new Vector<Object>();
+                row.add(a.getApplicationId());
+                row.add(a.getStudentName());
+                row.add(a.getRollNo());
+                row.add(a.getRouteName());
+                row.add(a.getStopName());
+                row.add(a.getValidFrom());
+                row.add(a.getValidTo());
+                row.add(a.getAppliedAt().toLocalDate());
+                row.add(a.getRemarks());
+                pendingModel.addRow(row);
             }
             showCapacity();
         } catch (ServiceException ex) {
@@ -307,17 +382,11 @@ public class AdminDashboard extends JFrame {
         busForm.setOpaque(false);
         UiUtil.addRow(busForm, 0, "Reg no", newBusReg);
         UiUtil.addRow(busForm, 1, "Capacity", newBusCapacity);
-        JButton addBus = UiUtil.primaryButton("Add bus");
-        addBus.addActionListener(e -> addBus());
-        JButton setCapacity = UiUtil.secondaryButton("Set capacity");
-        setCapacity.addActionListener(e -> changeCapacity());
-        JButton deleteBus = UiUtil.secondaryButton("Delete");
-        deleteBus.addActionListener(e -> deleteBus());
         JPanel busButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         busButtons.setOpaque(false);
-        busButtons.add(addBus);
-        busButtons.add(setCapacity);
-        busButtons.add(deleteBus);
+        busButtons.add(addBusBtn);
+        busButtons.add(setCapacityBtn);
+        busButtons.add(deleteBusBtn);
         UiUtil.addWide(busForm, 2, busButtons);
         busBox.add(busForm, BorderLayout.SOUTH);
         tab.add(busBox);
@@ -331,17 +400,11 @@ public class AdminDashboard extends JFrame {
         routeForm.setOpaque(false);
         UiUtil.addRow(routeForm, 0, "Route name", newRouteName);
         UiUtil.addRow(routeForm, 1, "Free bus", freeBusBox);
-        JButton addRoute = UiUtil.primaryButton("Add route");
-        addRoute.addActionListener(e -> addRoute());
-        JButton toggleRoute = UiUtil.secondaryButton("Active on/off");
-        toggleRoute.addActionListener(e -> toggleRoute());
-        JButton deleteRoute = UiUtil.secondaryButton("Delete");
-        deleteRoute.addActionListener(e -> deleteRoute());
         JPanel routeButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         routeButtons.setOpaque(false);
-        routeButtons.add(addRoute);
-        routeButtons.add(toggleRoute);
-        routeButtons.add(deleteRoute);
+        routeButtons.add(addRouteBtn);
+        routeButtons.add(toggleRouteBtn);
+        routeButtons.add(deleteRouteBtn);
         UiUtil.addWide(routeForm, 2, routeButtons);
         routeBox.add(routeForm, BorderLayout.SOUTH);
         tab.add(routeBox);
@@ -357,22 +420,20 @@ public class AdminDashboard extends JFrame {
         UiUtil.addRow(stopForm, 0, "Stop name", newStopName);
         UiUtil.addRow(stopForm, 1, "Order (1, 2, ...)", newStopSeq);
         UiUtil.addRow(stopForm, 2, "Pickup (HH:MM)", newStopTime);
-        JButton addStop = UiUtil.primaryButton("Add stop");
-        addStop.addActionListener(e -> addStop());
-        JButton deleteStop = UiUtil.secondaryButton("Delete");
-        deleteStop.addActionListener(e -> deleteStop());
         JPanel stopButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         stopButtons.setOpaque(false);
-        stopButtons.add(addStop);
-        stopButtons.add(deleteStop);
+        stopButtons.add(addStopBtn);
+        stopButtons.add(deleteStopBtn);
         UiUtil.addWide(stopForm, 3, stopButtons);
         stopBox.add(stopForm, BorderLayout.SOUTH);
         tab.add(stopBox);
 
         // clicking a route shows its stops
-        routeTable.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                loadStops();
+        routeTable.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
+            public void valueChanged(ListSelectionEvent e) {
+                if (!e.getValueIsAdjusting()) {
+                    loadStops();
+                }
             }
         });
         return tab;
@@ -382,28 +443,36 @@ public class AdminDashboard extends JFrame {
         try {
             buses = adminService.getAllBuses();
             busModel.setRowCount(0);
-            for (Bus b : buses) {
-                busModel.addRow(new Object[] {b.getRegNo(), b.getCapacity()});
+            for (int i = 0; i < buses.size(); i++) {
+                Bus b = buses.get(i);
+                Vector<Object> row = new Vector<Object>();
+                row.add(b.getRegNo());
+                row.add(b.getCapacity());
+                busModel.addRow(row);
             }
 
             routes = adminService.getAllRoutes();
             routeModel.setRowCount(0);
-            for (Route r : routes) {
-                String active = "No";
+            for (int i = 0; i < routes.size(); i++) {
+                Route r = routes.get(i);
+                Vector<Object> row = new Vector<Object>();
+                row.add(r.getRouteName());
+                row.add(r.getBusRegNo());
+                row.add(r.getCapacity());
                 if (r.isActive()) {
-                    active = "Yes";
+                    row.add("Yes");
+                } else {
+                    row.add("No");
                 }
-                routeModel.addRow(new Object[] {r.getRouteName(), r.getBusRegNo(), r.getCapacity(), active});
+                routeModel.addRow(row);
             }
 
-            freeBusBox.removeAllItems();
-            List<Bus> freeBuses = adminService.getUnassignedBuses();
-            for (Bus b : freeBuses) {
-                freeBusBox.addItem(b);
-            }
+            // the combo box shows the buses straight from the Vector
+            Vector<Bus> freeBuses = adminService.getUnassignedBuses();
+            freeBusBox.setModel(new DefaultComboBoxModel<Bus>(freeBuses));
 
             stopModel.setRowCount(0);
-            stops = new ArrayList<>();
+            stops = new Vector<Stop>();
         } catch (ServiceException ex) {
             showError(ex.getMessage());
         }
@@ -427,15 +496,20 @@ public class AdminDashboard extends JFrame {
 
     private void loadStops() {
         stopModel.setRowCount(0);
-        stops = new ArrayList<>();
+        stops = new Vector<Stop>();
         Route r = getSelectedRoute();
         if (r == null) {
             return;
         }
         try {
             stops = adminService.getStops(r.getRouteId());
-            for (Stop s : stops) {
-                stopModel.addRow(new Object[] {s.getStopSeq(), s.getStopName(), s.getPickupTime()});
+            for (int i = 0; i < stops.size(); i++) {
+                Stop s = stops.get(i);
+                Vector<Object> row = new Vector<Object>();
+                row.add(s.getStopSeq());
+                row.add(s.getStopName());
+                row.add(s.getPickupTime());
+                stopModel.addRow(row);
             }
         } catch (ServiceException ex) {
             showError(ex.getMessage());
@@ -578,9 +652,7 @@ public class AdminDashboard extends JFrame {
         top.setLayout(new FlowLayout(FlowLayout.LEFT, 10, 2));
         top.add(new JLabel("Show passengers of"));
         top.add(passengerRouteBox);
-        JButton refresh = UiUtil.secondaryButton("Refresh");
-        refresh.addActionListener(e -> loadPassengers());
-        top.add(refresh);
+        top.add(refreshPassengersBtn);
         passengerSummary.setFont(passengerSummary.getFont().deriveFont(Font.BOLD));
         top.add(passengerSummary);
         tab.add(top, BorderLayout.NORTH);
@@ -589,15 +661,11 @@ public class AdminDashboard extends JFrame {
         list.setLayout(new BorderLayout());
         passengerTable.getColumnModel().getColumn(4).setMaxWidth(40);   // "#" column
         list.add(new JScrollPane(passengerTable), BorderLayout.CENTER);
-        JButton cancel = UiUtil.secondaryButton("Cancel selected pass");
-        cancel.addActionListener(e -> cancelSelectedPass());
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.setOpaque(false);
-        buttons.add(cancel);
+        buttons.add(cancelPassBtn);
         list.add(buttons, BorderLayout.SOUTH);
         tab.add(list, BorderLayout.CENTER);
-
-        passengerRouteBox.addActionListener(e -> loadPassengers());
         return tab;
     }
 
@@ -605,9 +673,10 @@ public class AdminDashboard extends JFrame {
     private void loadPassengerRoutes() {
         try {
             Route before = (Route) passengerRouteBox.getSelectedItem();
-            List<Route> allRoutes = adminService.getAllRoutes();
+            Vector<Route> allRoutes = adminService.getAllRoutes();
             passengerRouteBox.removeAllItems();
-            for (Route r : allRoutes) {
+            for (int i = 0; i < allRoutes.size(); i++) {
+                Route r = allRoutes.get(i);
                 passengerRouteBox.addItem(r);
                 if (before != null && r.getRouteId() == before.getRouteId()) {
                     passengerRouteBox.setSelectedItem(r);
@@ -621,7 +690,7 @@ public class AdminDashboard extends JFrame {
 
     private void loadPassengers() {
         passengerModel.setRowCount(0);
-        passengers = new ArrayList<>();
+        passengers = new Vector<BusPass>();
         Route r = (Route) passengerRouteBox.getSelectedItem();
         if (r == null) {
             passengerSummary.setText(" ");
@@ -629,9 +698,19 @@ public class AdminDashboard extends JFrame {
         }
         try {
             passengers = adminService.getPassengers(r.getRouteId());
-            for (BusPass p : passengers) {
-                passengerModel.addRow(new Object[] {p.getPassNo(), p.getStudentName(), p.getRollNo(), p.getPhone(),
-                        p.getStopSeq(), p.getStopName(), p.getPickupTime(), p.getValidFrom(), p.getValidTo()});
+            for (int i = 0; i < passengers.size(); i++) {
+                BusPass p = passengers.get(i);
+                Vector<Object> row = new Vector<Object>();
+                row.add(p.getPassNo());
+                row.add(p.getStudentName());
+                row.add(p.getRollNo());
+                row.add(p.getPhone());
+                row.add(p.getStopSeq());
+                row.add(p.getStopName());
+                row.add(p.getPickupTime());
+                row.add(p.getValidFrom());
+                row.add(p.getValidTo());
+                passengerModel.addRow(row);
             }
             passengerSummary.setText(passengers.size() + " passenger(s) - bus " + r.getBusRegNo()
                     + ", capacity " + r.getCapacity());
@@ -658,11 +737,5 @@ public class AdminDashboard extends JFrame {
         } catch (ServiceException ex) {
             showError(ex.getMessage());
         }
-    }
-
-    private void logout() {
-        new AuthService().logout();
-        dispose();
-        new LoginFrame().setVisible(true);
     }
 }

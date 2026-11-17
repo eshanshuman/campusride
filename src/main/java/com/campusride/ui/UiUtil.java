@@ -116,7 +116,7 @@ public class UiUtil {
     }
 
     // table model where the user can't edit the cells (our tables are read-only)
-    public static DefaultTableModel readOnlyModel(String... columns) {
+    public static DefaultTableModel readOnlyModel(String[] columns) {
         return new DefaultTableModel(columns, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {

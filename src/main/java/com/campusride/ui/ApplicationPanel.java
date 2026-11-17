@@ -4,9 +4,10 @@ import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Vector;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -18,6 +19,8 @@ import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import javax.swing.table.DefaultTableModel;
 
 import com.campusride.model.Application;
@@ -30,22 +33,28 @@ import com.campusride.service.ServiceException;
 // "Apply for Pass" tab.
 // Top: form to apply for a stop and dates (save as DRAFT or SUBMIT).
 // Bottom: the student's applications with their status, and buttons for drafts.
-public class ApplicationPanel extends JPanel {
+public class ApplicationPanel extends JPanel implements ActionListener {
 
     private ApplicationService applicationService = new ApplicationService();
     private RouteService routeService = new RouteService();
 
-    private JComboBox<Route> routeBox = new JComboBox<>();
-    private JComboBox<Stop> stopBox = new JComboBox<>();
+    private JComboBox<Route> routeBox = new JComboBox<Route>();
+    private JComboBox<Stop> stopBox = new JComboBox<Stop>();
     private JSpinner fromDate = UiUtil.dateSpinner(LocalDate.now().plusDays(1));
     private JSpinner toDate = UiUtil.dateSpinner(LocalDate.now().plusMonths(6));
     private JTextArea remarks = new JTextArea(3, 24);
     private JLabel seatsLabel = new JLabel(" ");
 
-    private DefaultTableModel appModel = UiUtil.readOnlyModel(
-            "ID", "Route", "Stop", "From", "To", "Status", "Applied on", "Admin remarks");
+    private JButton draftBtn = UiUtil.secondaryButton("Save as draft");
+    private JButton submitBtn = UiUtil.primaryButton("Submit application");
+    private JButton refreshBtn = UiUtil.secondaryButton("Refresh");
+    private JButton deleteDraftBtn = UiUtil.secondaryButton("Delete selected draft");
+    private JButton submitDraftBtn = UiUtil.primaryButton("Submit selected draft");
+
+    private DefaultTableModel appModel = UiUtil.readOnlyModel(new String[] {
+            "ID", "Route", "Stop", "From", "To", "Status", "Applied on", "Admin remarks"});
     private JTable appTable = UiUtil.table(appModel);
-    private List<Application> myApps = new ArrayList<>();
+    private Vector<Application> myApps = new Vector<Application>();
 
     // When we fill the route combo box from code, its listener would fire for every item.
     // While this is true the listener does nothing.
@@ -69,10 +78,6 @@ public class ApplicationPanel extends JPanel {
         UiUtil.addRow(form, 4, "Remarks (optional)", new JScrollPane(remarks));
         UiUtil.addRow(form, 5, "Seats left", seatsLabel);
 
-        JButton draftBtn = UiUtil.secondaryButton("Save as draft");
-        draftBtn.addActionListener(e -> createApplication(false));
-        JButton submitBtn = UiUtil.primaryButton("Submit application");
-        submitBtn.addActionListener(e -> createApplication(true));
         JPanel formButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         formButtons.setOpaque(false);
         formButtons.add(draftBtn);
@@ -90,33 +95,54 @@ public class ApplicationPanel extends JPanel {
         appTable.getColumnModel().getColumn(0).setMaxWidth(45);   // ID column
         list.add(new JScrollPane(appTable), BorderLayout.CENTER);
 
-        JButton refresh = UiUtil.secondaryButton("Refresh");
-        refresh.addActionListener(e -> loadMyApplications());
-        JButton deleteDraft = UiUtil.secondaryButton("Delete selected draft");
-        deleteDraft.addActionListener(e -> deleteSelectedDraft());
-        JButton submitDraft = UiUtil.primaryButton("Submit selected draft");
-        submitDraft.addActionListener(e -> submitSelectedDraft());
         JPanel listButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         listButtons.setOpaque(false);
-        listButtons.add(refresh);
-        listButtons.add(deleteDraft);
-        listButtons.add(submitDraft);
+        listButtons.add(refreshBtn);
+        listButtons.add(deleteDraftBtn);
+        listButtons.add(submitDraftBtn);
         list.add(listButtons, BorderLayout.SOUTH);
         add(list, BorderLayout.CENTER);
 
-        // when the route changes, load its stops; when anything changes, update seats left
-        routeBox.addActionListener(e -> {
-            if (!loading) {
-                loadStops((Route) routeBox.getSelectedItem(), 0);
+        // buttons and the route combo box are handled in actionPerformed below
+        draftBtn.addActionListener(this);
+        submitBtn.addActionListener(this);
+        refreshBtn.addActionListener(this);
+        deleteDraftBtn.addActionListener(this);
+        submitDraftBtn.addActionListener(this);
+        routeBox.addActionListener(this);
+
+        // when a date changes, update the seats left
+        ChangeListener dateListener = new ChangeListener() {
+            public void stateChanged(ChangeEvent e) {
                 updateSeats();
             }
-        });
-        fromDate.addChangeListener(e -> updateSeats());
-        toDate.addChangeListener(e -> updateSeats());
+        };
+        fromDate.addChangeListener(dateListener);
+        toDate.addChangeListener(dateListener);
 
         loadRoutes();
         updateSeats();
         loadMyApplications();
+    }
+
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == routeBox) {
+            // a new route was chosen: load its stops and update the seats
+            if (!loading) {
+                loadStops((Route) routeBox.getSelectedItem(), 0);
+                updateSeats();
+            }
+        } else if (e.getSource() == draftBtn) {
+            createApplication(false);
+        } else if (e.getSource() == submitBtn) {
+            createApplication(true);
+        } else if (e.getSource() == refreshBtn) {
+            loadMyApplications();
+        } else if (e.getSource() == deleteDraftBtn) {
+            deleteSelectedDraft();
+        } else if (e.getSource() == submitDraftBtn) {
+            submitSelectedDraft();
+        }
     }
 
     // Called from RoutesPanel ("Apply for this stop"): fill in the form for the student.
@@ -140,9 +166,9 @@ public class ApplicationPanel extends JPanel {
         loading = true;
         routeBox.removeAllItems();
         try {
-            List<Route> routes = routeService.getActiveRoutes();
-            for (Route r : routes) {
-                routeBox.addItem(r);
+            Vector<Route> routes = routeService.getActiveRoutes();
+            for (int i = 0; i < routes.size(); i++) {
+                routeBox.addItem(routes.get(i));
             }
         } catch (ServiceException ex) {
             JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
@@ -158,8 +184,9 @@ public class ApplicationPanel extends JPanel {
             return;
         }
         try {
-            List<Stop> stops = routeService.getStops(route.getRouteId());
-            for (Stop s : stops) {
+            Vector<Stop> stops = routeService.getStops(route.getRouteId());
+            for (int i = 0; i < stops.size(); i++) {
+                Stop s = stops.get(i);
                 stopBox.addItem(s);
                 if (s.getStopId() == stopIdToSelect) {
                     stopBox.setSelectedItem(s);
@@ -218,10 +245,18 @@ public class ApplicationPanel extends JPanel {
         try {
             myApps = applicationService.getMyApplications();
             appModel.setRowCount(0);
-            for (Application a : myApps) {
-                appModel.addRow(new Object[] {
-                    a.getApplicationId(), a.getRouteName(), a.getStopName(), a.getValidFrom(), a.getValidTo(),
-                    a.getStatus(), a.getAppliedAt().toLocalDate(), a.getAdminRemarks()});
+            for (int i = 0; i < myApps.size(); i++) {
+                Application a = myApps.get(i);
+                Vector<Object> row = new Vector<Object>();
+                row.add(a.getApplicationId());
+                row.add(a.getRouteName());
+                row.add(a.getStopName());
+                row.add(a.getValidFrom());
+                row.add(a.getValidTo());
+                row.add(a.getStatus());
+                row.add(a.getAppliedAt().toLocalDate());
+                row.add(a.getAdminRemarks());
+                appModel.addRow(row);
             }
         } catch (ServiceException ex) {
             JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);

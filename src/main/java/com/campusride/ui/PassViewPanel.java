@@ -6,8 +6,9 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
-import java.util.ArrayList;
-import java.util.List;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.util.Vector;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -16,6 +17,8 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
 import javax.swing.table.DefaultTableModel;
 
 import com.campusride.model.BusPass;
@@ -26,14 +29,15 @@ import com.campusride.util.Session;
 // "My Bus Pass" tab.
 // Top: the pass drawn like a card (navy with a yellow stripe).
 // Bottom: a table with all the student's passes.
-public class PassViewPanel extends JPanel {
+public class PassViewPanel extends JPanel implements ActionListener {
 
     private ApplicationService applicationService = new ApplicationService();
 
-    private DefaultTableModel passModel = UiUtil.readOnlyModel(
-            "Pass No", "Route", "Stop", "Pickup", "From", "To", "Status");
+    private DefaultTableModel passModel = UiUtil.readOnlyModel(new String[] {
+            "Pass No", "Route", "Stop", "Pickup", "From", "To", "Status"});
     private JTable passTable = UiUtil.table(passModel);
-    private List<BusPass> passes = new ArrayList<>();
+    private Vector<BusPass> passes = new Vector<BusPass>();
+    private JButton refreshBtn = UiUtil.secondaryButton("Refresh");
 
     // labels on the card
     private JLabel cardPassNo = cardLabel(22, Font.BOLD);
@@ -81,23 +85,30 @@ public class PassViewPanel extends JPanel {
         JPanel list = UiUtil.section("All my passes");
         list.setLayout(new BorderLayout());
         list.add(new JScrollPane(passTable), BorderLayout.CENTER);
-        JButton refresh = UiUtil.secondaryButton("Refresh");
-        refresh.addActionListener(e -> loadPasses());
+        refreshBtn.addActionListener(this);
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.setOpaque(false);
-        buttons.add(refresh);
+        buttons.add(refreshBtn);
         list.add(buttons, BorderLayout.SOUTH);
         add(list, BorderLayout.CENTER);
 
         // clicking a pass in the table shows it on the card
-        passTable.getSelectionModel().addListSelectionListener(e -> {
-            int row = passTable.getSelectedRow();
-            if (!e.getValueIsAdjusting() && row >= 0) {
-                showCard(passes.get(row));
+        passTable.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
+            public void valueChanged(ListSelectionEvent e) {
+                int row = passTable.getSelectedRow();
+                if (!e.getValueIsAdjusting() && row >= 0) {
+                    showCard(passes.get(row));
+                }
             }
         });
 
         loadPasses();
+    }
+
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == refreshBtn) {
+            loadPasses();
+        }
     }
 
     // white label for the card
@@ -112,16 +123,24 @@ public class PassViewPanel extends JPanel {
         try {
             passes = applicationService.getMyPasses();
             passModel.setRowCount(0);
-            for (BusPass p : passes) {
-                passModel.addRow(new Object[] {p.getPassNo(), p.getRouteName(), p.getStopName(),
-                        p.getPickupTime(), p.getValidFrom(), p.getValidTo(), p.getStatus()});
+            for (int i = 0; i < passes.size(); i++) {
+                BusPass p = passes.get(i);
+                Vector<Object> row = new Vector<Object>();
+                row.add(p.getPassNo());
+                row.add(p.getRouteName());
+                row.add(p.getStopName());
+                row.add(p.getPickupTime());
+                row.add(p.getValidFrom());
+                row.add(p.getValidTo());
+                row.add(p.getStatus());
+                passModel.addRow(row);
             }
 
             // show the first ACTIVE pass on the card
             BusPass activePass = null;
-            for (BusPass p : passes) {
-                if (p.getStatus().equals("ACTIVE")) {
-                    activePass = p;
+            for (int i = 0; i < passes.size(); i++) {
+                if (passes.get(i).getStatus().equals("ACTIVE")) {
+                    activePass = passes.get(i);
                     break;
                 }
             }

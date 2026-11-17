@@ -4,6 +4,8 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.FlowLayout;
 import java.awt.GridBagLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -21,7 +23,7 @@ import com.campusride.service.AuthService;
 import com.campusride.service.ServiceException;
 
 // First screen: a Login tab and a Register tab (registering is only for students).
-public class LoginFrame extends JFrame {
+public class LoginFrame extends JFrame implements ActionListener {
 
     // also used by ProfilePanel
     static final String[] DEPARTMENTS = {"CSE", "IT", "ECE", "EEE", "MECH", "CIVIL", "BIOTECH", "OTHER"};
@@ -30,20 +32,22 @@ public class LoginFrame extends JFrame {
     private AuthService authService = new AuthService();
     private JTabbedPane tabs = new JTabbedPane();
 
-    // login tab fields
+    // login tab
     private JTextField loginUser = new JTextField(18);
     private JPasswordField loginPass = new JPasswordField(18);
+    private JButton loginBtn = UiUtil.primaryButton("Log in");
 
-    // register tab fields
+    // register tab
     private JTextField regUser = new JTextField(18);
     private JPasswordField regPass = new JPasswordField(18);
     private JPasswordField regConfirm = new JPasswordField(18);
     private JTextField regRoll = new JTextField(18);
     private JTextField regName = new JTextField(18);
-    private JComboBox<String> regDept = new JComboBox<>(DEPARTMENTS);
-    private JComboBox<Integer> regYear = new JComboBox<>(YEARS);
+    private JComboBox<String> regDept = new JComboBox<String>(DEPARTMENTS);
+    private JComboBox<Integer> regYear = new JComboBox<Integer>(YEARS);
     private JTextField regPhone = new JTextField(18);
     private JTextField regEmail = new JTextField(18);
+    private JButton registerBtn = UiUtil.primaryButton("Create account");
 
     public LoginFrame() {
         super("CampusRide - Login");
@@ -60,8 +64,21 @@ public class LoginFrame extends JFrame {
         centre.add(tabs, BorderLayout.CENTER);
         add(centre, BorderLayout.CENTER);
 
+        // this class handles all the button clicks (see actionPerformed below)
+        loginBtn.addActionListener(this);
+        loginPass.addActionListener(this);   // pressing Enter in the password box also logs in
+        registerBtn.addActionListener(this);
+
         setSize(480, 600);
         setLocationRelativeTo(null);   // middle of the screen
+    }
+
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == loginBtn || e.getSource() == loginPass) {
+            doLogin();
+        } else if (e.getSource() == registerBtn) {
+            doRegister();
+        }
     }
 
     private JPanel buildLoginTab() {
@@ -70,10 +87,6 @@ public class LoginFrame extends JFrame {
         form.setBorder(BorderFactory.createEmptyBorder(30, 20, 20, 20));
         UiUtil.addRow(form, 0, "Username", loginUser);
         UiUtil.addRow(form, 1, "Password", loginPass);
-
-        JButton loginBtn = UiUtil.primaryButton("Log in");
-        loginBtn.addActionListener(e -> doLogin());
-        loginPass.addActionListener(e -> doLogin());   // pressing Enter in the password box also logs in
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.setOpaque(false);
@@ -101,8 +114,6 @@ public class LoginFrame extends JFrame {
         UiUtil.addRow(form, 7, "Phone (10 digits) *", regPhone);
         UiUtil.addRow(form, 8, "Email *", regEmail);
 
-        JButton registerBtn = UiUtil.primaryButton("Create account");
-        registerBtn.addActionListener(e -> doRegister());
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.setOpaque(false);
         buttons.add(registerBtn);

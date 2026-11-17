@@ -3,6 +3,8 @@ package com.campusride.ui;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.FlowLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.time.LocalDate;
 
 import javax.swing.JButton;
@@ -10,6 +12,8 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 
 import com.campusride.model.Route;
 import com.campusride.model.Stop;
@@ -17,10 +21,11 @@ import com.campusride.service.AuthService;
 import com.campusride.util.Session;
 
 // Main window for a student: header with Logout, and 4 tabs.
-public class StudentDashboard extends JFrame {
+public class StudentDashboard extends JFrame implements ActionListener {
 
     private JTabbedPane tabs = new JTabbedPane();
     private JLabel welcome = new JLabel();
+    private JButton logoutBtn = UiUtil.secondaryButton("Logout");
     private ApplicationPanel applicationPanel;
     private PassViewPanel passViewPanel;
 
@@ -32,12 +37,11 @@ public class StudentDashboard extends JFrame {
         // header: title on the left, "Welcome, name" and Logout on the right
         JPanel header = UiUtil.header("CampusRide", "Student portal - routes, applications and your bus pass");
         welcome.setForeground(Color.WHITE);
-        JButton logout = UiUtil.secondaryButton("Logout");
-        logout.addActionListener(e -> logout());
+        logoutBtn.addActionListener(this);
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 6));
         right.setOpaque(false);
         right.add(welcome);
-        right.add(logout);
+        right.add(logoutBtn);
         header.add(right, BorderLayout.EAST);
         add(header, BorderLayout.NORTH);
         refreshWelcome();
@@ -50,17 +54,27 @@ public class StudentDashboard extends JFrame {
         tabs.addTab("My Profile", new ProfilePanel(this));
 
         // reload the data each time these tabs are opened, so the status is always up to date
-        tabs.addChangeListener(e -> {
-            if (tabs.getSelectedComponent() == applicationPanel) {
-                applicationPanel.loadMyApplications();
-            } else if (tabs.getSelectedComponent() == passViewPanel) {
-                passViewPanel.loadPasses();
+        tabs.addChangeListener(new ChangeListener() {
+            public void stateChanged(ChangeEvent e) {
+                if (tabs.getSelectedComponent() == applicationPanel) {
+                    applicationPanel.loadMyApplications();
+                } else if (tabs.getSelectedComponent() == passViewPanel) {
+                    passViewPanel.loadPasses();
+                }
             }
         });
         add(tabs, BorderLayout.CENTER);
 
         setSize(1050, 700);
         setLocationRelativeTo(null);
+    }
+
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == logoutBtn) {
+            new AuthService().logout();
+            dispose();
+            new LoginFrame().setVisible(true);
+        }
     }
 
     // RoutesPanel calls this when the student clicks "Apply for this stop"
@@ -76,11 +90,5 @@ public class StudentDashboard extends JFrame {
             name = Session.getStudent().getFullName();
         }
         welcome.setText("Welcome, " + name);
-    }
-
-    private void logout() {
-        new AuthService().logout();
-        dispose();
-        new LoginFrame().setVisible(true);
     }
 }

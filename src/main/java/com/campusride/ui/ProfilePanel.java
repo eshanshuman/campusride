@@ -3,6 +3,8 @@ package com.campusride.ui;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.GridBagLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -18,7 +20,7 @@ import com.campusride.util.Session;
 
 // "My Profile" tab: the student can see and edit their details.
 // Username and roll number are shown but can't be changed.
-public class ProfilePanel extends JPanel {
+public class ProfilePanel extends JPanel implements ActionListener {
 
     private StudentService studentService = new StudentService();
     private StudentDashboard dashboard;
@@ -26,10 +28,12 @@ public class ProfilePanel extends JPanel {
     private JTextField username = new JTextField(22);
     private JTextField rollNo = new JTextField(22);
     private JTextField fullName = new JTextField(22);
-    private JComboBox<String> department = new JComboBox<>(LoginFrame.DEPARTMENTS);
-    private JComboBox<Integer> year = new JComboBox<>(LoginFrame.YEARS);
+    private JComboBox<String> department = new JComboBox<String>(LoginFrame.DEPARTMENTS);
+    private JComboBox<Integer> year = new JComboBox<Integer>(LoginFrame.YEARS);
     private JTextField phone = new JTextField(22);
     private JTextField email = new JTextField(22);
+    private JButton saveBtn = UiUtil.primaryButton("Save changes");
+    private JButton undoBtn = UiUtil.secondaryButton("Undo changes");
 
     public ProfilePanel(StudentDashboard dashboard) {
         this.dashboard = dashboard;
@@ -50,14 +54,12 @@ public class ProfilePanel extends JPanel {
         UiUtil.addRow(form, 5, "Phone (10 digits) *", phone);
         UiUtil.addRow(form, 6, "Email *", email);
 
-        JButton save = UiUtil.primaryButton("Save changes");
-        save.addActionListener(e -> save());
-        JButton undo = UiUtil.secondaryButton("Undo changes");
-        undo.addActionListener(e -> loadProfile());
+        saveBtn.addActionListener(this);
+        undoBtn.addActionListener(this);
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.setOpaque(false);
-        buttons.add(undo);
-        buttons.add(save);
+        buttons.add(undoBtn);
+        buttons.add(saveBtn);
         UiUtil.addWide(form, 7, buttons);
 
         // keep the form small in the top-left corner
@@ -67,6 +69,14 @@ public class ProfilePanel extends JPanel {
         add(holder, BorderLayout.NORTH);
 
         loadProfile();
+    }
+
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == saveBtn) {
+            save();
+        } else if (e.getSource() == undoBtn) {
+            loadProfile();
+        }
     }
 
     // fill the fields from the database

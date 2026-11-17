@@ -11,9 +11,11 @@ public class Main {
 
     public static void main(String[] args) {
         // Swing windows should be created on the Event Dispatch Thread, invokeLater does that
-        SwingUtilities.invokeLater(() -> {
-            UiUtil.applyTheme();
-            new LoginFrame().setVisible(true);
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                UiUtil.applyTheme();
+                new LoginFrame().setVisible(true);
+            }
         });
     }
 }
